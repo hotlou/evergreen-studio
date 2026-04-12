@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: "Inter", system-ui, sans-serif;
+  --font-fraunces: "Fraunces", Georgia, serif;
+  --font-jetbrains: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  background: #F5F6F8;
+  color: #44546C;
+  font-family: var(--font-inter);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Pillar chip colors referenced from the mockups — kept as utility classes so
+   Strategy / Today views can map pillar.color -> class without inline style. */
+.chip-science   { background: rgba(78, 179, 94, 0.12);  color: #2C5D32; }
+.chip-founder   { background: rgba(68, 84, 108, 0.10);  color: #44546C; }
+.chip-athlete   { background: rgba(184, 71, 46, 0.10);  color: #8F3421; }
+.chip-product   { background: rgba(200, 149, 69, 0.12); color: #8A6120; }
+.chip-community { background: rgba(90, 138, 143, 0.12); color: #3C686B; }
+
+.why-block {
+  border-left: 2px solid #4EB35E;
+  background: #EEF8F0;
+  color: #2C5D32;
+}

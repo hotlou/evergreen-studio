@@ -1,0 +1,337 @@
+// Evergreen Studio — v1 schema
+//
+// Shape reference: see /root/.claude/plans/linear-baking-tome.md §4.
+// Vector columns for ContentPiece / MediaAsset will be added in M4 via
+// `pgvector` and raw-SQL migration (Prisma doesn't model vector types yet).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth (NextAuth v5 / @auth/prisma-adapter) ----------
+
+model User {
+  id            String       @id @default(cuid())
+  name          String?
+  email         String       @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime     @default(now())
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- Workspace / Brand ----------
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  memberships Membership[]
+  brands      Brand[]
+}
+
+enum Role {
+  owner
+  admin
+  editor
+  viewer
+}
+
+model Membership {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        Role     @default(owner)
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model Brand {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  slug        String
+  logoUrl     String?
+
+  // Visual identity tokens (primary, ink, accent, etc.) — free-shape JSON
+  colorTokens Json?
+
+  // The living brief
+  voiceGuide  String?  @db.Text
+  taboosList  String[] @default([])
+  channels    String[] @default([]) // ["instagram", ...]
+
+  // Ayrshare (M7) — stored per-brand so each brand can link its own accounts
+  ayrshareProfileKey       String?
+  ayrshareConnectedAccounts Json?
+
+  // v1.1 fallback: direct webhook to Make/n8n
+  webhookUrl  String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pillars        ContentPillar[]
+  contentPieces  ContentPiece[]
+  mediaAssets    MediaAsset[]
+  brandLearnings BrandLearning[]
+  ingestJobs     IngestJob[]
+
+  @@unique([workspaceId, slug])
+}
+
+// ---------- Strategy (pillars / angles / hooks) ----------
+
+model ContentPillar {
+  id          String  @id @default(cuid())
+  brandId     String
+  name        String
+  description String? @db.Text
+  // 0.0 – 1.0. Must sum to 1.0 per brand (enforced in Strategy editor).
+  targetShare Float   @default(0.0)
+  color       String  @default("#4EB35E")
+  sortOrder   Int     @default(0)
+
+  brand          Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  angles         Angle[]
+  contentPieces  ContentPiece[]
+
+  @@index([brandId])
+}
+
+model Angle {
+  id         String    @id @default(cuid())
+  pillarId   String
+  title      String
+  notes      String?   @db.Text
+  lastUsedAt DateTime?
+  useCount   Int       @default(0)
+
+  pillar         ContentPillar  @relation(fields: [pillarId], references: [id], onDelete: Cascade)
+  hooks          Hook[]
+  contentPieces  ContentPiece[]
+
+  @@index([pillarId])
+}
+
+model Hook {
+  id         String    @id @default(cuid())
+  angleId    String
+  pattern    String    @db.Text
+  lastUsedAt DateTime?
+  useCount   Int       @default(0)
+
+  angle          Angle          @relation(fields: [angleId], references: [id], onDelete: Cascade)
+  contentPieces  ContentPiece[]
+
+  @@index([angleId])
+}
+
+// ---------- Content ----------
+
+enum Channel {
+  instagram
+  tiktok
+  linkedin
+  x
+  facebook
+  threads
+  youtube
+  pinterest
+  email
+}
+
+enum PieceStatus {
+  draft
+  approved
+  sent
+  archived
+}
+
+model ContentPiece {
+  id           String      @id @default(cuid())
+  brandId      String
+  pillarId     String?
+  angleId      String?
+  hookId       String?
+  channel      Channel
+  body         String      @db.Text
+  mediaAssetIds String[]   @default([])
+  status       PieceStatus @default(draft)
+  reasonWhy    String?     @db.Text // the "why this" line
+  generatedAt  DateTime    @default(now())
+  // embedding vector(1536) — added via raw SQL in M4
+
+  brand   Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  pillar  ContentPillar? @relation(fields: [pillarId], references: [id])
+  angle   Angle?         @relation(fields: [angleId], references: [id])
+  hook    Hook?          @relation(fields: [hookId], references: [id])
+
+  publishEvents PublishEvent[]
+
+  @@index([brandId, channel, generatedAt])
+}
+
+// ---------- Library assets ----------
+
+enum MediaKind {
+  image
+  doc
+  video
+}
+
+enum MediaSource {
+  generated
+  uploaded
+  ingested
+}
+
+model MediaAsset {
+  id               String       @id @default(cuid())
+  brandId          String
+  kind             MediaKind
+  url              String
+  source           MediaSource
+  tags             String[]     @default([])
+  caption          String?      @db.Text
+  performanceScore Float?
+  createdAt        DateTime     @default(now())
+  // embedding vector(1536) — added via raw SQL in M4
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, source])
+}
+
+// ---------- Brand memory (the compounding moat) ----------
+
+enum LearningKind {
+  do_this
+  dont
+  tone
+  visual
+}
+
+enum LearningSource {
+  edit
+  thumbs
+  manual
+}
+
+model BrandLearning {
+  id              String         @id @default(cuid())
+  brandId         String
+  kind            LearningKind
+  text            String         @db.Text
+  source          LearningSource
+  strength        Int            @default(1)
+  promotedToRule  Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, strength])
+}
+
+// ---------- Ingest ----------
+
+enum IngestSource {
+  ayrshare
+  csv
+  urls
+}
+
+enum IngestStatus {
+  queued
+  running
+  complete
+  failed
+}
+
+model IngestJob {
+  id                     String       @id @default(cuid())
+  brandId                String
+  source                 IngestSource
+  status                 IngestStatus @default(queued)
+  rawStats               Json?
+  minedPillarSuggestions Json?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId])
+}
+
+// ---------- Publishing ----------
+
+enum PublishProvider {
+  ayrshare
+  webhook
+}
+
+model PublishEvent {
+  id             String          @id @default(cuid())
+  contentPieceId String
+  provider       PublishProvider
+  payload        Json
+  providerPostId String?
+  status         String          @default("pending")
+  response       Json?
+  sentAt         DateTime        @default(now())
+
+  contentPiece ContentPiece @relation(fields: [contentPieceId], references: [id], onDelete: Cascade)
+
+  @@index([contentPieceId])
+}

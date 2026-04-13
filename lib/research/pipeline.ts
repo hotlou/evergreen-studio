@@ -109,7 +109,7 @@ export async function researchBrand(
   };
 
   const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-5-20241022",
+    model: "claude-opus-4-6",
     max_tokens: 4096,
     system: [systemBlock],
     tools: [PROPOSE_STRATEGY_TOOL],

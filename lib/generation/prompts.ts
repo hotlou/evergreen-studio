@@ -6,7 +6,7 @@ import type { SelectedSlot } from "./selector";
 
 export const generatedPieceSchema = z.object({
   body: z.string().min(10).max(2200),
-  reasonWhy: z.string().max(300),
+  reasonWhy: z.string(),
 });
 
 export type GeneratedPiece = z.infer<typeof generatedPieceSchema>;

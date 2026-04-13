@@ -61,7 +61,7 @@ export function PillarCard({
   function handleAddAngle() {
     const title = newAngle.trim();
     if (!title) return;
-    startTransition(() => createAngle(pillar.id, title));
+    startTransition(() => { createAngle(pillar.id, title); });
     setNewAngle("");
   }
 

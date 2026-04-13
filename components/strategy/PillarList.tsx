@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef, useCallback } from "react";
 import { Plus } from "lucide-react";
 import { PillarCard } from "./PillarCard";
 import { createPillar, updatePillarShares } from "@/app/actions/strategy";
@@ -41,13 +41,47 @@ export function PillarList({
   const [newPillarName, setNewPillarName] = useState("");
   const [pending, startTransition] = useTransition();
 
-  // Recalculate when pillars change from server
+  // Sync when pillars change from server (new pillar added / deleted)
   const pillars = initialPillars;
+  useEffect(() => {
+    setShares((prev) => {
+      const next: Record<string, number> = {};
+      for (const p of initialPillars) {
+        next[p.id] = prev[p.id] ?? Math.round(p.targetShare * 100);
+      }
+      return next;
+    });
+  }, [initialPillars]);
   const total = Object.values(shares).reduce((s, v) => s + v, 0);
   const balanced = Math.abs(total - 100) <= 1;
 
+  const [saved, setSaved] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Auto-save when shares sum to 100% (debounced 800ms)
+  const autoSave = useCallback(
+    (nextShares: Record<string, number>) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const t = Object.values(nextShares).reduce((s, v) => s + v, 0);
+      if (Math.abs(t - 100) > 1) return;
+      if (pillars.length === 0) return;
+      saveTimer.current = setTimeout(() => {
+        const shareList = pillars.map((p) => ({
+          pillarId: p.id,
+          targetShare: (nextShares[p.id] ?? 0) / 100,
+        }));
+        startTransition(() => { updatePillarShares(brandId, shareList); });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+      }, 800);
+    },
+    [pillars, brandId, startTransition]
+  );
+
   function handleShareChange(pillarId: string, pct: number) {
-    setShares((prev) => ({ ...prev, [pillarId]: Math.max(0, Math.min(100, pct)) }));
+    const next = { ...shares, [pillarId]: Math.max(0, Math.min(100, pct)) };
+    setShares(next);
+    autoSave(next);
   }
 
   function saveShares() {
@@ -55,7 +89,9 @@ export function PillarList({
       pillarId: p.id,
       targetShare: (shares[p.id] ?? 0) / 100,
     }));
-    startTransition(() => updatePillarShares(brandId, shareList));
+    startTransition(() => { updatePillarShares(brandId, shareList); });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   }
 
   function handleAddPillar() {
@@ -88,12 +124,14 @@ export function PillarList({
             disabled={!balanced || pending}
             className={cn(
               "rounded-lg text-xs font-semibold px-3 py-1.5 transition",
-              balanced
+              saved
+                ? "bg-evergreen-100 text-evergreen-700"
+                : balanced
                 ? "bg-evergreen-500 text-white hover:bg-evergreen-600"
                 : "bg-slate-line text-slate-muted cursor-not-allowed"
             )}
           >
-            {pending ? "Saving…" : "Save shares"}
+            {saved ? "Saved" : pending ? "Saving…" : balanced ? "Save shares" : "Must sum to 100%"}
           </button>
         </div>
       </div>

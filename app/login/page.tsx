@@ -1,20 +1,41 @@
 import Image from "next/image";
 import { signIn } from "@/lib/auth";
+import { AuthError } from "next-auth";
+import { redirect } from "next/navigation";
 
 export const metadata = { title: "Sign in · Evergreen Studio" };
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; error?: string }>;
 }) {
   const params = await searchParams;
   const from = params?.from ?? "/app/today";
+  const error = params?.error;
 
   async function signInAction(formData: FormData) {
     "use server";
     const email = String(formData.get("email") ?? "");
-    await signIn("credentials", { email, redirectTo: from });
+    try {
+      await signIn("credentials", { email, redirectTo: from });
+    } catch (err) {
+      // signIn throws NEXT_REDIRECT on success — rethrow it
+      if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+      // Also check for the redirect digest that Next.js uses
+      if (err && typeof err === "object" && "digest" in err) {
+        const digest = (err as { digest?: string }).digest;
+        if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) throw err;
+      }
+      // Real auth error — redirect with message
+      const msg =
+        err instanceof AuthError
+          ? err.type
+          : err instanceof Error
+          ? err.message
+          : "Unknown error";
+      redirect(`/login?error=${encodeURIComponent(msg)}&from=${encodeURIComponent(from)}`);
+    }
   }
 
   return (
@@ -40,6 +61,12 @@ export default async function LoginPage({
           <p className="text-sm text-slate-muted mb-6">
             Dev mode — any email works. We&apos;ll create your workspace on first sign-in.
           </p>
+
+          {error && (
+            <div className="mb-4 rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
+              Sign-in failed: {error}
+            </div>
+          )}
 
           <form action={signInAction} className="space-y-4">
             <label className="block">

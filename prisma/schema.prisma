@@ -115,6 +115,11 @@ model Brand {
   websiteUrl    String?
   referenceUrls String[] @default([]) // news articles, third-party info, etc.
 
+  // M2 research cache — avoids redundant Claude calls
+  lastResearchResult  Json?      // cached ResearchResult
+  lastResearchAt      DateTime?
+  lastResearchUrlHash String?    // SHA-256 of websiteUrl + sorted referenceUrls
+
   // Ayrshare (M7) — stored per-brand so each brand can link its own accounts
   ayrshareProfileKey       String?
   ayrshareConnectedAccounts Json?
@@ -290,10 +295,17 @@ model BrandLearning {
 
 // ---------- Ingest ----------
 
+enum ScraperPath {
+  direct
+  jina
+  failed
+}
+
 enum IngestSource {
   ayrshare
   csv
   urls
+  research
 }
 
 enum IngestStatus {
@@ -308,6 +320,7 @@ model IngestJob {
   brandId                String
   source                 IngestSource
   status                 IngestStatus @default(queued)
+  scraperPath            ScraperPath?
   rawStats               Json?
   minedPillarSuggestions Json?
   createdAt              DateTime     @default(now())

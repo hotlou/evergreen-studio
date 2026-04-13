@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import type { ResearchResult } from "@/lib/research/prompts";
 
 async function requireBrandAccess(brandId: string) {
   const session = await auth();
@@ -157,4 +159,78 @@ export async function updateTaboos(brandId: string, taboosList: string[]) {
     data: { taboosList: cleaned },
   });
   revalidatePath("/app/strategy");
+}
+
+// ── Accept research results (M2) ────────────────────────────
+
+export type AcceptResearchInput = {
+  /** Which pillar indices from the ResearchResult to accept */
+  pillarIndices: number[];
+  /** Whether to accept the voice guide */
+  acceptVoice: boolean;
+  /** Whether to accept/merge taboo words (always merge, never replace) */
+  acceptTaboos: boolean;
+};
+
+export async function acceptResearch(
+  brandId: string,
+  result: ResearchResult,
+  input: AcceptResearchInput
+) {
+  const brand = await requireBrandAccess(brandId);
+
+  // Normalize target shares: sum and divide so they total 1.0
+  const selectedPillars = input.pillarIndices.map((i) => result.pillars[i]).filter(Boolean);
+  const shareSum = selectedPillars.reduce((s, p) => s + p.targetShare, 0) || 1;
+
+  await prisma.$transaction(async (tx) => {
+    // Create selected pillars + their angles
+    const existingCount = await tx.contentPillar.count({ where: { brandId } });
+
+    for (let i = 0; i < selectedPillars.length; i++) {
+      const p = selectedPillars[i];
+      const pillar = await tx.contentPillar.create({
+        data: {
+          brandId,
+          name: p.name,
+          description: p.description,
+          targetShare: p.targetShare / shareSum,
+          color: p.color,
+          sortOrder: existingCount + i,
+        },
+      });
+
+      for (const angleTitle of p.angles) {
+        await tx.angle.create({
+          data: { pillarId: pillar.id, title: angleTitle },
+        });
+      }
+    }
+
+    // Voice: only overwrite if existing is empty/whitespace
+    if (input.acceptVoice && (!brand.voiceGuide || !brand.voiceGuide.trim())) {
+      await tx.brand.update({
+        where: { id: brandId },
+        data: { voiceGuide: result.voiceGuide },
+      });
+    }
+
+    // Taboos: always merge, never replace
+    if (input.acceptTaboos) {
+      const existing = new Set(brand.taboosList.map((t) => t.toLowerCase().trim()));
+      const merged = [
+        ...brand.taboosList,
+        ...result.tabooWords
+          .map((t) => t.toLowerCase().trim())
+          .filter((t) => t && !existing.has(t)),
+      ];
+      await tx.brand.update({
+        where: { id: brandId },
+        data: { taboosList: merged },
+      });
+    }
+  });
+
+  revalidatePath("/app/strategy");
+  revalidatePath("/app/today");
 }

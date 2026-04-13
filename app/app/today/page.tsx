@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getBrandContext } from "@/lib/brand";
 import { prisma } from "@/lib/db";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
+import { GenerateButton } from "@/components/today/GenerateButton";
+import { ContentCard, type ContentCardPiece } from "@/components/today/ContentCard";
 
 export const metadata = { title: "Today · Evergreen Studio" };
 
@@ -32,8 +34,38 @@ export default async function TodayPage() {
   const totalShare = pillars.reduce((s, p) => s + p.targetShare, 0);
   const onTrack = Math.abs(totalShare - 1.0) <= 0.02;
 
+  // Fetch today's content pieces (generated in the last 24h, not archived)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const pieces = await prisma.contentPiece.findMany({
+    where: {
+      brandId: brand.id,
+      channel: "instagram",
+      status: { not: "archived" },
+      generatedAt: { gte: todayStart },
+    },
+    include: {
+      pillar: { select: { name: true, color: true } },
+      angle: { select: { title: true } },
+    },
+    orderBy: { generatedAt: "desc" },
+  });
+
+  const cardPieces: ContentCardPiece[] = pieces.map((p) => ({
+    id: p.id,
+    pillarName: p.pillar?.name ?? "General",
+    pillarColor: p.pillar?.color ?? "#44546C",
+    angleTitle: p.angle?.title ?? "",
+    body: p.body,
+    reasonWhy: p.reasonWhy,
+    status: p.status,
+  }));
+
+  const approvedCount = cardPieces.filter((p) => p.status === "approved").length;
+
   return (
-    <div className="px-8 py-7">
+    <div className="px-8 py-7 max-w-3xl">
       <div className="flex items-start justify-between mb-6">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-slate-muted mb-1.5">
@@ -49,25 +81,9 @@ export default async function TodayPage() {
               : " · Set up pillars in Strategy first"}
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled
-            className="rounded-lg border border-slate-line bg-white text-slate-muted text-xs font-semibold px-4 py-2.5 cursor-not-allowed"
-          >
-            Regenerate all
-          </button>
-          <button
-            type="button"
-            disabled
-            className="rounded-lg bg-evergreen-500 text-white text-xs font-semibold px-4 py-2.5 opacity-60 cursor-not-allowed"
-          >
-            Send approved →
-          </button>
-        </div>
       </div>
 
-      {/* Pillar mix bar — real data from Strategy */}
+      {/* Pillar mix bar */}
       <div className="rounded-xl border border-slate-line bg-white p-4 mb-6">
         <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-slate-muted font-bold mb-2.5">
           <span>PILLAR MIX · TARGET</span>
@@ -117,19 +133,47 @@ export default async function TodayPage() {
         )}
       </div>
 
-      <div className="rounded-xl border border-dashed border-slate-line bg-white/60 px-6 py-14 text-center">
-        <div className="font-mono text-[10px] uppercase tracking-widest text-evergreen-600 font-bold mb-2">
-          M4 · DAILY CONTENT PACK
-        </div>
-        <h2 className="font-display text-2xl text-slate-ink mb-2">
-          The generation pipeline lands here
-        </h2>
-        <p className="text-sm text-slate-muted max-w-md mx-auto">
-          Strategy is live — pillars, angles, voice, and taboos are all editable.
-          Next up: AI-powered brand research (M2) to pre-fill your strategy,
-          then the daily content pack generator (M4) that reads from it.
-        </p>
+      {/* Generate button */}
+      <div className="mb-6">
+        <GenerateButton brandId={brand.id} hasPillars={hasPillars} />
       </div>
+
+      {/* Content cards */}
+      {cardPieces.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
+              GENERATED · {cardPieces.length} pieces
+            </div>
+            {approvedCount > 0 && (
+              <span className="text-[10px] font-mono font-bold text-evergreen-600">
+                {approvedCount} approved
+              </span>
+            )}
+          </div>
+          <div className="space-y-4">
+            {cardPieces.map((piece) => (
+              <ContentCard key={piece.id} piece={piece} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state when no pieces yet */}
+      {cardPieces.length === 0 && hasPillars && (
+        <div className="rounded-xl border border-dashed border-slate-line bg-white/60 px-6 py-14 text-center">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-evergreen-600 font-bold mb-2">
+            NO CONTENT YET TODAY
+          </div>
+          <h2 className="font-display text-xl text-slate-ink mb-2">
+            Hit &ldquo;Generate&rdquo; to create today&apos;s pack
+          </h2>
+          <p className="text-sm text-slate-muted max-w-md mx-auto">
+            The AI will pick under-served pillars, select fresh angles, and write
+            3 Instagram captions that won&apos;t repeat what you&apos;ve posted before.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

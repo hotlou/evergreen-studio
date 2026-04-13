@@ -1,0 +1,148 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { prisma } from "@/lib/db";
+import { selectSlots, type SelectedSlot } from "./selector";
+import {
+  buildGenerationPrompt,
+  GENERATE_CONTENT_TOOL,
+  generateContentSchema,
+  type GeneratedPiece,
+} from "./prompts";
+
+export type GeneratedContentPiece = {
+  id: string;
+  pillarId: string;
+  pillarName: string;
+  pillarColor: string;
+  angleId: string;
+  angleTitle: string;
+  body: string;
+  reasonWhy: string;
+  status: string;
+};
+
+/**
+ * Full generation pipeline:
+ * 1. Select pillar+angle slots (anti-rep scheduling)
+ * 2. Fetch context (voice, taboos, recent pieces, learnings)
+ * 3. Call Claude to generate captions
+ * 4. Persist ContentPiece rows + update angle usage
+ * 5. Return generated pieces
+ */
+export async function generateContentPack(
+  brandId: string,
+  channel: string = "instagram",
+  count: number = 3
+): Promise<GeneratedContentPiece[]> {
+  // 1. Select slots
+  const slots = await selectSlots(brandId, channel, count);
+
+  // 2. Fetch brand context
+  const brand = await prisma.brand.findUniqueOrThrow({
+    where: { id: brandId },
+  });
+
+  // Recent pieces for anti-repetition context
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recentPieces = await prisma.contentPiece.findMany({
+    where: {
+      brandId,
+      channel: channel as never,
+      generatedAt: { gte: thirtyDaysAgo },
+      status: { not: "archived" },
+    },
+    select: { body: true },
+    orderBy: { generatedAt: "desc" },
+    take: 15,
+  });
+
+  // Brand learnings (M5 — may be empty for now)
+  const learnings = await prisma.brandLearning.findMany({
+    where: { brandId },
+    select: { kind: true, text: true },
+    orderBy: { strength: "desc" },
+    take: 10,
+  });
+
+  // 3. Build prompt and call Claude
+  const { system, user } = buildGenerationPrompt({
+    brandName: brand.name,
+    voiceGuide: brand.voiceGuide ?? "",
+    taboos: brand.taboosList,
+    slots,
+    recentBodies: recentPieces.map((p) => p.body),
+    learnings: learnings.map((l) => ({ kind: l.kind, content: l.text })),
+  });
+
+  const anthropic = new Anthropic();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cache_control not in SDK types
+  const systemBlock: any = {
+    type: "text",
+    text: system,
+    cache_control: { type: "ephemeral" },
+  };
+
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 4096,
+    system: [systemBlock],
+    tools: [GENERATE_CONTENT_TOOL],
+    tool_choice: { type: "tool", name: "generate_content_pack" },
+    messages: [{ role: "user", content: user }],
+  });
+
+  // Extract tool-use result
+  const toolBlock = response.content.find((b) => b.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") {
+    throw new Error("Claude did not return a tool-use response");
+  }
+
+  const raw = toolBlock.input as Record<string, unknown>;
+  const { pieces } = generateContentSchema.parse(raw);
+
+  // 4. Persist pieces + update angle usage
+  const results: GeneratedContentPiece[] = [];
+
+  await prisma.$transaction(async (tx) => {
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      const piece = pieces[i];
+      if (!piece) continue;
+
+      const created = await tx.contentPiece.create({
+        data: {
+          brandId,
+          pillarId: slot.pillar.id,
+          angleId: slot.angle.id,
+          channel: channel as never,
+          body: piece.body,
+          reasonWhy: piece.reasonWhy,
+          status: "draft",
+        },
+      });
+
+      // Bump angle usage
+      await tx.angle.update({
+        where: { id: slot.angle.id },
+        data: {
+          lastUsedAt: new Date(),
+          useCount: { increment: 1 },
+        },
+      });
+
+      results.push({
+        id: created.id,
+        pillarId: slot.pillar.id,
+        pillarName: slot.pillar.name,
+        pillarColor: slot.pillar.color,
+        angleId: slot.angle.id,
+        angleTitle: slot.angle.title,
+        body: piece.body,
+        reasonWhy: piece.reasonWhy,
+        status: "draft",
+      });
+    }
+  });
+
+  return results;
+}

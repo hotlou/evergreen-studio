@@ -1,0 +1,56 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+
+async function requirePieceAccess(pieceId: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const piece = await prisma.contentPiece.findUnique({
+    where: { id: pieceId },
+    include: { brand: { include: { workspace: { include: { memberships: true } } } } },
+  });
+  if (!piece) throw new Error("Piece not found");
+  const isMember = piece.brand.workspace.memberships.some(
+    (m) => m.userId === session.user.id
+  );
+  if (!isMember) throw new Error("Access denied");
+  return piece;
+}
+
+export async function approvePiece(pieceId: string) {
+  await requirePieceAccess(pieceId);
+  await prisma.contentPiece.update({
+    where: { id: pieceId },
+    data: { status: "approved" },
+  });
+  revalidatePath("/app/today");
+}
+
+export async function unapprovePiece(pieceId: string) {
+  await requirePieceAccess(pieceId);
+  await prisma.contentPiece.update({
+    where: { id: pieceId },
+    data: { status: "draft" },
+  });
+  revalidatePath("/app/today");
+}
+
+export async function updatePieceBody(pieceId: string, body: string) {
+  await requirePieceAccess(pieceId);
+  await prisma.contentPiece.update({
+    where: { id: pieceId },
+    data: { body },
+  });
+  revalidatePath("/app/today");
+}
+
+export async function archivePiece(pieceId: string) {
+  await requirePieceAccess(pieceId);
+  await prisma.contentPiece.update({
+    where: { id: pieceId },
+    data: { status: "archived" },
+  });
+  revalidatePath("/app/today");
+}

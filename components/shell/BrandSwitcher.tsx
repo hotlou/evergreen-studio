@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ChevronsUpDown, Plus, Check } from "lucide-react";
 import { selectBrand } from "@/app/actions/brand";
@@ -17,9 +18,28 @@ export function BrandSwitcher({
 }) {
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
+  const ref = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+
+  // Close on route change (covers intake wizard redirect)
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -52,12 +72,10 @@ export function BrandSwitcher({
                   key={b.id}
                   type="button"
                   disabled={pending}
-                  onClick={() =>
-                    startTransition(async () => {
-                      await selectBrand(b.id);
-                      setOpen(false);
-                    })
-                  }
+                  onClick={() => {
+                    setOpen(false);
+                    startTransition(() => { selectBrand(b.id); });
+                  }}
                   className={cn(
                     "w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-evergreen-50 transition",
                     isCurrent && "bg-evergreen-50"

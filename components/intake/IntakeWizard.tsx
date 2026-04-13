@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, X, Plus, Globe, Link2 } from "lucide-react";
 import { createBrand } from "@/app/actions/brand";
 import { cn } from "@/lib/utils";
 
@@ -15,15 +15,23 @@ const STEPS = [
 
 const CHANNELS = [
   { id: "instagram", label: "Instagram", available: true },
+  { id: "facebook", label: "Facebook", available: true },
   { id: "tiktok", label: "TikTok", available: false },
   { id: "linkedin", label: "LinkedIn", available: false },
   { id: "x", label: "X / Twitter", available: false },
+  { id: "threads", label: "Threads", available: false },
+  { id: "youtube", label: "YouTube", available: false },
+  { id: "pinterest", label: "Pinterest", available: false },
 ];
 
 export function IntakeWizard() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#4EB35E");
+  const [hexInput, setHexInput] = useState("#4EB35E");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [referenceUrls, setReferenceUrls] = useState<string[]>([]);
+  const [refUrlInput, setRefUrlInput] = useState("");
   const [voiceGuide, setVoiceGuide] = useState("");
   const [taboos, setTaboos] = useState<string[]>([]);
   const [taboosInput, setTaboosInput] = useState("");
@@ -32,9 +40,21 @@ export function IntakeWizard() {
 
   const canNext = () => {
     if (step === 0) return name.trim().length > 0;
-    if (step === 1) return voiceGuide.trim().length > 0;
     return true;
   };
+
+  function handleColorPickerChange(hex: string) {
+    setPrimaryColor(hex);
+    setHexInput(hex.toUpperCase());
+  }
+
+  function handleHexInputChange(raw: string) {
+    setHexInput(raw);
+    const cleaned = raw.startsWith("#") ? raw : `#${raw}`;
+    if (/^#[0-9a-fA-F]{6}$/.test(cleaned)) {
+      setPrimaryColor(cleaned);
+    }
+  }
 
   function addTaboo() {
     const v = taboosInput.trim().toLowerCase();
@@ -42,14 +62,23 @@ export function IntakeWizard() {
     setTaboosInput("");
   }
 
+  function addRefUrl() {
+    const v = refUrlInput.trim();
+    if (v && !referenceUrls.includes(v)) {
+      setReferenceUrls([...referenceUrls, v]);
+    }
+    setRefUrlInput("");
+  }
+
   async function handleSubmit(formData: FormData) {
     formData.set("name", name);
+    formData.set("primaryColor", primaryColor);
+    formData.set("websiteUrl", websiteUrl);
+    formData.set("referenceUrls", referenceUrls.join("\n"));
     formData.set("voiceGuide", voiceGuide);
     formData.set("taboosList", taboos.join("\n"));
-    formData.set("primaryColor", primaryColor);
     for (const c of channels) formData.append("channels", c);
     setSubmitting(true);
-    // Server action redirects to /app/today on success; errors bubble to Next error UI.
     await createBrand(formData);
   }
 
@@ -58,8 +87,6 @@ export function IntakeWizard() {
       action={handleSubmit}
       className="max-w-2xl mx-auto"
       onSubmit={(e) => {
-        // Block the form submission unless we're on the review step — the
-        // Next/Back buttons should not submit.
         if (step !== STEPS.length - 1) e.preventDefault();
       }}
     >
@@ -79,7 +106,7 @@ export function IntakeWizard() {
             </div>
             <div
               className={cn(
-                "text-[10px] font-mono uppercase tracking-wider font-semibold",
+                "text-[10px] font-mono uppercase tracking-wider font-semibold hidden sm:block",
                 i <= step ? "text-slate-ink" : "text-slate-muted"
               )}
             >
@@ -97,19 +124,23 @@ export function IntakeWizard() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-slate-line bg-white shadow-soft p-8 min-h-[380px] flex flex-col">
+      <div className="rounded-xl border border-slate-line bg-white shadow-soft p-8 min-h-[420px] flex flex-col">
         <div className="flex-1">
+          {/* Step 0: Identity */}
           {step === 0 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">
                 What&apos;s the brand?
               </h2>
               <p className="text-sm text-slate-muted mb-6">
-                A name and a primary color. You can refine everything else later.
+                Name, website, color, and any reference material. The AI
+                research step (coming in M2) will use the website to
+                pre-fill your strategy.
               </p>
+
               <label className="block mb-4">
                 <span className="block text-xs font-mono uppercase tracking-wider text-slate-muted mb-1.5 font-semibold">
-                  Name
+                  Brand name
                 </span>
                 <input
                   type="text"
@@ -119,7 +150,21 @@ export function IntakeWizard() {
                   className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
                 />
               </label>
-              <label className="block">
+
+              <label className="block mb-4">
+                <span className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-slate-muted mb-1.5 font-semibold">
+                  <Globe className="w-3 h-3" /> Website URL
+                </span>
+                <input
+                  type="url"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  placeholder="https://combatcandy.com"
+                  className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
+                />
+              </label>
+
+              <div className="mb-4">
                 <span className="block text-xs font-mono uppercase tracking-wider text-slate-muted mb-1.5 font-semibold">
                   Primary color
                 </span>
@@ -127,17 +172,70 @@ export function IntakeWizard() {
                   <input
                     type="color"
                     value={primaryColor}
-                    onChange={(e) => setPrimaryColor(e.target.value)}
+                    onChange={(e) => handleColorPickerChange(e.target.value)}
                     className="w-12 h-10 rounded border border-slate-line cursor-pointer"
                   />
-                  <code className="font-mono text-sm text-slate-ink">
-                    {primaryColor.toUpperCase()}
-                  </code>
+                  <input
+                    type="text"
+                    value={hexInput}
+                    onChange={(e) => handleHexInputChange(e.target.value)}
+                    placeholder="#4EB35E"
+                    maxLength={7}
+                    className="w-24 rounded-lg border border-slate-line px-2.5 py-2 text-sm font-mono outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
+                  />
+                  <span
+                    className="w-8 h-8 rounded-md border border-slate-line"
+                    style={{ background: primaryColor }}
+                  />
                 </div>
-              </label>
+              </div>
+
+              <div>
+                <span className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-slate-muted mb-1.5 font-semibold">
+                  <Link2 className="w-3 h-3" /> Reference URLs
+                  <span className="font-normal normal-case tracking-normal text-slate-muted">(optional)</span>
+                </span>
+                <p className="text-xs text-slate-muted mb-2">
+                  News articles, reviews, competitor pages, or anything that
+                  helps the AI understand this brand.
+                </p>
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="url"
+                    value={refUrlInput}
+                    onChange={(e) => setRefUrlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); addRefUrl(); }
+                    }}
+                    placeholder="https://..."
+                    className="flex-1 rounded-lg border border-slate-line px-3 py-2 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={addRefUrl}
+                    disabled={!refUrlInput.trim()}
+                    className="rounded-lg border border-slate-line px-3 text-sm font-semibold hover:bg-slate-bg disabled:opacity-40"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                {referenceUrls.map((u) => (
+                  <div key={u} className="flex items-center gap-2 text-xs text-slate-muted mb-1">
+                    <span className="truncate flex-1">{u}</span>
+                    <button
+                      type="button"
+                      onClick={() => setReferenceUrls(referenceUrls.filter((x) => x !== u))}
+                      className="text-slate-muted hover:text-red-600"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </>
           )}
 
+          {/* Step 1: Voice */}
           {step === 1 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">
@@ -145,7 +243,7 @@ export function IntakeWizard() {
               </h2>
               <p className="text-sm text-slate-muted mb-6">
                 The voice guide every generation obeys. Be specific — adjectives,
-                examples, rules.
+                examples, rules. Leave blank and AI research will draft one for you.
               </p>
               <textarea
                 value={voiceGuide}
@@ -157,6 +255,7 @@ export function IntakeWizard() {
             </>
           )}
 
+          {/* Step 2: Taboos */}
           {step === 2 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">
@@ -171,10 +270,7 @@ export function IntakeWizard() {
                   value={taboosInput}
                   onChange={(e) => setTaboosInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addTaboo();
-                    }
+                    if (e.key === "Enter") { e.preventDefault(); addTaboo(); }
                   }}
                   placeholder="melt"
                   className="flex-1 rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
@@ -208,13 +304,15 @@ export function IntakeWizard() {
             </>
           )}
 
+          {/* Step 3: Channels */}
           {step === 3 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">
                 Where does this brand publish?
               </h2>
               <p className="text-sm text-slate-muted mb-6">
-                v1 ships Instagram captions. More channels unlock in v1.1.
+                Select all that apply. Instagram and Facebook are live now;
+                more channels unlock soon.
               </p>
               <div className="space-y-2">
                 {CHANNELS.map((c) => {
@@ -241,11 +339,7 @@ export function IntakeWizard() {
                     >
                       <span>{c.label}</span>
                       <span className="text-[10px] font-mono uppercase tracking-wider">
-                        {!c.available
-                          ? "v1.1"
-                          : selected
-                          ? "✓ On"
-                          : "Off"}
+                        {!c.available ? "Soon" : selected ? "On" : "Off"}
                       </span>
                     </button>
                   );
@@ -254,6 +348,7 @@ export function IntakeWizard() {
             </>
           )}
 
+          {/* Step 4: Review */}
           {step === 4 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">Review</h2>
@@ -263,6 +358,10 @@ export function IntakeWizard() {
               </p>
               <div className="space-y-4 text-sm">
                 <ReviewRow label="Name" value={name} />
+                <ReviewRow
+                  label="Website"
+                  value={websiteUrl || <span className="text-slate-muted">—</span>}
+                />
                 <ReviewRow
                   label="Primary color"
                   value={
@@ -275,11 +374,23 @@ export function IntakeWizard() {
                     </span>
                   }
                 />
+                {referenceUrls.length > 0 && (
+                  <ReviewRow
+                    label="References"
+                    value={
+                      <div className="space-y-0.5">
+                        {referenceUrls.map((u) => (
+                          <div key={u} className="text-xs text-slate-muted truncate">{u}</div>
+                        ))}
+                      </div>
+                    }
+                  />
+                )}
                 <ReviewRow
                   label="Voice"
                   value={
                     <span className="text-slate-muted italic line-clamp-3">
-                      {voiceGuide || "—"}
+                      {voiceGuide || "Will be drafted by AI research"}
                     </span>
                   }
                 />

@@ -111,6 +111,10 @@ model Brand {
   taboosList  String[] @default([])
   channels    String[] @default([]) // ["instagram", ...]
 
+  // Brand research inputs — used by M2 smart onboarding
+  websiteUrl    String?
+  referenceUrls String[] @default([]) // news articles, third-party info, etc.
+
   // Ayrshare (M7) — stored per-brand so each brand can link its own accounts
   ayrshareProfileKey       String?
   ayrshareConnectedAccounts Json?

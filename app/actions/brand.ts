@@ -19,6 +19,8 @@ export async function selectBrand(brandId: string) {
 
 const createBrandSchema = z.object({
   name: z.string().min(1).max(80),
+  websiteUrl: z.string().url().optional().or(z.literal("")),
+  referenceUrls: z.array(z.string().url()).max(20).default([]),
   voiceGuide: z.string().max(4000).optional(),
   taboosList: z.array(z.string().min(1).max(40)).max(64).default([]),
   channels: z.array(z.string()).default(["instagram"]),
@@ -44,6 +46,11 @@ export async function createBrand(formData: FormData) {
 
   const parsed = createBrandSchema.parse({
     name: formData.get("name"),
+    websiteUrl: formData.get("websiteUrl") || undefined,
+    referenceUrls: String(formData.get("referenceUrls") ?? "")
+      .split(/[\n]/)
+      .map((s) => s.trim())
+      .filter(Boolean),
     voiceGuide: formData.get("voiceGuide") ?? undefined,
     taboosList: String(formData.get("taboosList") ?? "")
       .split(/[\n,]/)
@@ -77,6 +84,8 @@ export async function createBrand(formData: FormData) {
       workspaceId: membership.workspaceId,
       name: parsed.name,
       slug,
+      websiteUrl: parsed.websiteUrl || null,
+      referenceUrls: parsed.referenceUrls,
       voiceGuide: parsed.voiceGuide,
       taboosList: parsed.taboosList,
       channels: parsed.channels.length ? parsed.channels : ["instagram"],

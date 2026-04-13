@@ -1,6 +1,8 @@
 import { getBrandContext } from "@/lib/brand";
 import { prisma } from "@/lib/db";
+import { researchResultSchema } from "@/lib/research/prompts";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
+import { ResearchButton } from "@/components/strategy/ResearchButton";
 import { PillarList } from "@/components/strategy/PillarList";
 import { VoiceGuideEditor } from "@/components/strategy/VoiceGuideEditor";
 import { TabooWordsEditor } from "@/components/strategy/TabooWordsEditor";
@@ -45,6 +47,16 @@ export default async function StrategyPage() {
     })),
   }));
 
+  // Parse cached research result if present
+  let cachedResult = null;
+  if (brand.lastResearchResult) {
+    try {
+      cachedResult = researchResultSchema.parse(brand.lastResearchResult);
+    } catch {
+      // Invalid cache — ignore
+    }
+  }
+
   return (
     <div className="px-8 py-7 max-w-4xl">
       <div className="flex items-start justify-between mb-6">
@@ -60,6 +72,13 @@ export default async function StrategyPage() {
           </p>
         </div>
       </div>
+
+      {/* AI Research */}
+      <ResearchButton
+        brandId={brand.id}
+        hasExistingPillars={pillars.length > 0}
+        cachedResult={cachedResult}
+      />
 
       {/* Pillars + angles */}
       <div className="mb-6">

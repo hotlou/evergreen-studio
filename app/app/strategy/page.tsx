@@ -1,5 +1,9 @@
 import { getBrandContext } from "@/lib/brand";
+import { prisma } from "@/lib/db";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
+import { PillarList } from "@/components/strategy/PillarList";
+import { VoiceGuideEditor } from "@/components/strategy/VoiceGuideEditor";
+import { TabooWordsEditor } from "@/components/strategy/TabooWordsEditor";
 
 export const metadata = { title: "Strategy · Evergreen Studio" };
 
@@ -15,12 +19,38 @@ export default async function StrategyPage() {
 
   const brand = ctx.currentBrand;
 
+  const pillars = await prisma.contentPillar.findMany({
+    where: { brandId: brand.id },
+    include: {
+      angles: {
+        orderBy: { lastUsedAt: "asc" },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  const pillarData = pillars.map((p) => ({
+    id: p.id,
+    brandId: p.brandId,
+    name: p.name,
+    description: p.description,
+    targetShare: p.targetShare,
+    color: p.color,
+    angles: p.angles.map((a) => ({
+      id: a.id,
+      title: a.title,
+      notes: a.notes,
+      lastUsedAt: a.lastUsedAt,
+      useCount: a.useCount,
+    })),
+  }));
+
   return (
-    <div className="px-8 py-7">
+    <div className="px-8 py-7 max-w-4xl">
       <div className="flex items-start justify-between mb-6">
         <div>
           <div className="font-mono text-[10px] uppercase tracking-widest text-slate-muted mb-1.5">
-            BRAND STRATEGY · DRAFT
+            BRAND STRATEGY · {brand.name.toUpperCase()}
           </div>
           <h1 className="font-display text-[32px] font-semibold tracking-tight text-evergreen-700 leading-tight">
             Strategy
@@ -31,49 +61,21 @@ export default async function StrategyPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <section className="rounded-xl border border-slate-line bg-white p-5">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold mb-3">
-            VOICE GUIDE
-          </div>
-          <div className="text-[13px] leading-relaxed text-slate-ink whitespace-pre-wrap">
-            {brand.voiceGuide || (
-              <span className="text-slate-muted italic">
-                No voice guide yet. Edit the brand to add one.
-              </span>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-slate-line bg-white p-5">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold mb-3">
-            TABOO WORDS · NEVER GENERATE
-          </div>
-          {brand.taboosList.length ? (
-            <div className="flex flex-wrap gap-1.5">
-              {brand.taboosList.map((t) => (
-                <span
-                  key={t}
-                  className="bg-red-50 text-red-700 border border-red-100 text-[11px] font-semibold px-2.5 py-1 rounded-full"
-                >
-                  {t} ✕
-                </span>
-              ))}
-            </div>
-          ) : (
-            <div className="text-slate-muted text-xs italic">None configured.</div>
-          )}
-        </section>
+      {/* Pillars + angles */}
+      <div className="mb-6">
+        <PillarList brandId={brand.id} pillars={pillarData} />
       </div>
 
-      <div className="mt-6 rounded-xl border border-dashed border-slate-line bg-white/60 px-6 py-12 text-center">
-        <div className="font-mono text-[10px] uppercase tracking-widest text-evergreen-600 font-bold mb-2">
-          M3 · PILLARS &amp; ANGLES EDITOR
-        </div>
-        <p className="text-sm text-slate-muted max-w-md mx-auto">
-          Editable pillars (with target % shares that sum to 100) and angles
-          with last-used tracking land in M3 — pre-populated by the M2 ingest.
-        </p>
+      {/* Voice + Taboos side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <VoiceGuideEditor
+          brandId={brand.id}
+          initial={brand.voiceGuide ?? ""}
+        />
+        <TabooWordsEditor
+          brandId={brand.id}
+          initial={brand.taboosList}
+        />
       </div>
     </div>
   );

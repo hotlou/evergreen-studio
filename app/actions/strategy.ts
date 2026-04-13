@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import type { ResearchResult } from "@/lib/research/prompts";
@@ -179,13 +179,14 @@ export async function acceptResearch(
 ) {
   const brand = await requireBrandAccess(brandId);
 
-  // Normalize target shares: sum and divide so they total 1.0
   const selectedPillars = input.pillarIndices.map((i) => result.pillars[i]).filter(Boolean);
-  const shareSum = selectedPillars.reduce((s, p) => s + p.targetShare, 0) || 1;
 
   await prisma.$transaction(async (tx) => {
     // Create selected pillars + their angles
-    const existingCount = await tx.contentPillar.count({ where: { brandId } });
+    const existingPillars = await tx.contentPillar.findMany({
+      where: { brandId },
+      select: { id: true, targetShare: true },
+    });
 
     for (let i = 0; i < selectedPillars.length; i++) {
       const p = selectedPillars[i];
@@ -194,9 +195,9 @@ export async function acceptResearch(
           brandId,
           name: p.name,
           description: p.description,
-          targetShare: p.targetShare / shareSum,
+          targetShare: p.targetShare, // temporary — normalized below
           color: p.color,
-          sortOrder: existingCount + i,
+          sortOrder: existingPillars.length + i,
         },
       });
 
@@ -205,6 +206,19 @@ export async function acceptResearch(
           data: { pillarId: pillar.id, title: angleTitle },
         });
       }
+    }
+
+    // Normalize ALL pillar shares to sum to 1.0
+    const allPillars = await tx.contentPillar.findMany({
+      where: { brandId },
+      select: { id: true, targetShare: true },
+    });
+    const rawSum = allPillars.reduce((s, p) => s + p.targetShare, 0) || 1;
+    for (const p of allPillars) {
+      await tx.contentPillar.update({
+        where: { id: p.id },
+        data: { targetShare: p.targetShare / rawSum },
+      });
     }
 
     // Voice: only overwrite if existing is empty/whitespace
@@ -229,8 +243,29 @@ export async function acceptResearch(
         data: { taboosList: merged },
       });
     }
+
+    // Archive the result and clear active cache so suggestions don't reappear
+    await tx.brand.update({
+      where: { id: brandId },
+      data: {
+        lastResearchArchive: brand.lastResearchResult ?? undefined,
+        lastResearchResult: Prisma.DbNull,
+      },
+    });
   });
 
   revalidatePath("/app/strategy");
   revalidatePath("/app/today");
+}
+
+export async function dismissResearch(brandId: string) {
+  const brand = await requireBrandAccess(brandId);
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: {
+      lastResearchArchive: brand.lastResearchResult ?? undefined,
+      lastResearchResult: Prisma.DbNull,
+    },
+  });
+  revalidatePath("/app/strategy");
 }

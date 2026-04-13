@@ -3,7 +3,11 @@
 import { useState, useTransition } from "react";
 import { Check, X, Sparkles } from "lucide-react";
 import type { ResearchResult } from "@/lib/research/prompts";
-import { acceptResearch, type AcceptResearchInput } from "@/app/actions/strategy";
+import {
+  acceptResearch,
+  dismissResearch,
+  type AcceptResearchInput,
+} from "@/app/actions/strategy";
 import { cn } from "@/lib/utils";
 
 export function ResearchResults({
@@ -11,11 +15,13 @@ export function ResearchResults({
   result,
   hasExistingPillars,
   onDismiss,
+  onAccepted,
 }: {
   brandId: string;
   result: ResearchResult;
   hasExistingPillars: boolean;
   onDismiss: () => void;
+  onAccepted: () => void;
 }) {
   // When no pillars exist → all selected by default
   // When pillars exist → all unchecked (merge mode)
@@ -45,6 +51,15 @@ export function ResearchResults({
     startTransition(async () => {
       await acceptResearch(brandId, result, input);
       setSaved(true);
+      // Give user a moment to see the success state, then refresh
+      setTimeout(() => onAccepted(), 1500);
+    });
+  }
+
+  function handleDismiss() {
+    startTransition(async () => {
+      await dismissResearch(brandId);
+      onDismiss();
     });
   }
 
@@ -78,7 +93,8 @@ export function ResearchResults({
         </div>
         <button
           type="button"
-          onClick={onDismiss}
+          onClick={handleDismiss}
+          disabled={pending}
           className="text-slate-muted hover:text-slate-ink p-1"
         >
           <X className="w-4 h-4" />
@@ -220,7 +236,8 @@ export function ResearchResults({
       <div className="px-5 py-4 flex items-center justify-between">
         <button
           type="button"
-          onClick={onDismiss}
+          onClick={handleDismiss}
+          disabled={pending}
           className="text-sm text-slate-muted hover:text-slate-ink"
         >
           Dismiss

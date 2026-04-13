@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { Pencil, Check } from "lucide-react";
 import { updateVoiceGuide } from "@/app/actions/strategy";
 
@@ -14,6 +14,11 @@ export function VoiceGuideEditor({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(initial);
   const [pending, startTransition] = useTransition();
+
+  // Sync from server when initial changes (e.g. after research merge)
+  useEffect(() => {
+    if (!editing) setValue(initial);
+  }, [initial, editing]);
 
   function save() {
     startTransition(async () => {
@@ -59,7 +64,7 @@ export function VoiceGuideEditor({
         />
       ) : (
         <div className="text-[13px] leading-relaxed text-slate-ink whitespace-pre-wrap">
-          {initial || (
+          {value || (
             <span className="text-slate-muted italic">
               No voice guide yet. Click Edit to add one.
             </span>
@@ -67,7 +72,7 @@ export function VoiceGuideEditor({
         </div>
       )}
 
-      {initial && !editing && (
+      {value && !editing && (
         <div className="mt-3 px-3 py-2 bg-evergreen-50 border-l-2 border-evergreen-500 rounded-r-lg text-[10px] text-evergreen-800 leading-relaxed">
           <strong>Rule:</strong> If it sounds like a supplement brand, rewrite it.
         </div>

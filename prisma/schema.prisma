@@ -116,7 +116,8 @@ model Brand {
   referenceUrls String[] @default([]) // news articles, third-party info, etc.
 
   // M2 research cache — avoids redundant Claude calls
-  lastResearchResult  Json?      // cached ResearchResult
+  lastResearchResult  Json?      // cached ResearchResult (active suggestions)
+  lastResearchArchive Json?      // last accepted/dismissed result (for recovery)
   lastResearchAt      DateTime?
   lastResearchUrlHash String?    // SHA-256 of websiteUrl + sorted referenceUrls
 

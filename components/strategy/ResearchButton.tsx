@@ -1,10 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Sparkles, RotateCcw } from "lucide-react";
 import type { ResearchResult } from "@/lib/research/prompts";
 import { ResearchResults } from "./ResearchResults";
 import { cn } from "@/lib/utils";
+
+const LOADING_MESSAGES = [
+  "Visiting your website…",
+  "Reading your brand story…",
+  "Searching the web for mentions…",
+  "Analyzing your competitors…",
+  "Studying your brand voice…",
+  "Identifying content themes…",
+  "Activating AI content army…",
+  "Drafting your strategy…",
+  "Almost there…",
+];
 
 export function ResearchButton({
   brandId,
@@ -15,10 +28,24 @@ export function ResearchButton({
   hasExistingPillars: boolean;
   cachedResult: ResearchResult | null;
 }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ResearchResult | null>(cachedResult);
   const [error, setError] = useState<string | null>(null);
   const [wasCached, setWasCached] = useState(!!cachedResult);
+  const [msgIndex, setMsgIndex] = useState(0);
+
+  // Rotate loading messages every 3s
+  useEffect(() => {
+    if (!loading) {
+      setMsgIndex(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setMsgIndex((i) => (i + 1) % LOADING_MESSAGES.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   async function runResearch(bypassCache = false) {
     setLoading(true);
@@ -40,6 +67,11 @@ export function ResearchButton({
     }
   }
 
+  function handleDone() {
+    setResult(null);
+    router.refresh();
+  }
+
   if (result && !loading) {
     return (
       <div className="mb-6">
@@ -47,7 +79,8 @@ export function ResearchButton({
           brandId={brandId}
           result={result}
           hasExistingPillars={hasExistingPillars}
-          onDismiss={() => setResult(null)}
+          onDismiss={handleDone}
+          onAccepted={handleDone}
         />
         {wasCached && (
           <button
@@ -89,9 +122,14 @@ export function ResearchButton({
       </button>
 
       {loading && (
-        <p className="text-xs text-slate-muted mt-2">
-          Scraping website, analyzing brand, drafting strategy… this takes 10-20 seconds.
-        </p>
+        <div className="mt-3 rounded-lg bg-evergreen-50 border border-evergreen-100 px-4 py-3">
+          <p className="text-sm text-evergreen-700 font-medium transition-opacity duration-500">
+            {LOADING_MESSAGES[msgIndex]}
+          </p>
+          <p className="text-xs text-evergreen-600 mt-1">
+            This can take 3-5 minutes — sit tight.
+          </p>
+        </div>
       )}
 
       {error && (

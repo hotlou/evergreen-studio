@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { PillarCard } from "./PillarCard";
 import { createPillar, updatePillarShares } from "@/app/actions/strategy";
 import { cn } from "@/lib/utils";
+import { toDisplayPercents } from "@/lib/utils/shares";
 
 type Angle = {
   id: string;
@@ -33,9 +34,10 @@ export function PillarList({
 }) {
   const [shares, setShares] = useState<Record<string, number>>(() => {
     const m: Record<string, number> = {};
-    for (const p of initialPillars) {
-      m[p.id] = Math.round(p.targetShare * 100);
-    }
+    const pcts = toDisplayPercents(initialPillars.map((p) => p.targetShare));
+    initialPillars.forEach((p, i) => {
+      m[p.id] = pcts[i];
+    });
     return m;
   });
   const [newPillarName, setNewPillarName] = useState("");
@@ -46,8 +48,18 @@ export function PillarList({
   useEffect(() => {
     setShares((prev) => {
       const next: Record<string, number> = {};
-      for (const p of initialPillars) {
-        next[p.id] = prev[p.id] ?? Math.round(p.targetShare * 100);
+      // If any pillar is brand new (not in prev), use largest-remainder for the whole set.
+      // Otherwise keep user's in-flight edits.
+      const hasNewPillar = initialPillars.some((p) => !(p.id in prev));
+      if (hasNewPillar) {
+        const pcts = toDisplayPercents(initialPillars.map((p) => p.targetShare));
+        initialPillars.forEach((p, i) => {
+          next[p.id] = pcts[i];
+        });
+      } else {
+        for (const p of initialPillars) {
+          next[p.id] = prev[p.id];
+        }
       }
       return next;
     });

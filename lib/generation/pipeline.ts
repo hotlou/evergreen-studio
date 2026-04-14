@@ -101,7 +101,29 @@ export async function generateContentPack(
   }
 
   const raw = toolBlock.input as Record<string, unknown>;
-  const { pieces } = generateContentSchema.parse(raw);
+
+  // Defensive: Claude sometimes returns `pieces` as a stringified JSON array
+  // instead of a real array. Unwrap it if so.
+  if (typeof raw.pieces === "string") {
+    try {
+      raw.pieces = JSON.parse(raw.pieces);
+    } catch {
+      throw new Error(
+        "Claude returned pieces as a malformed string. Please retry."
+      );
+    }
+  }
+  // Also handle the case where the whole input is a string (rare)
+  let parsedRaw: Record<string, unknown> = raw;
+  if (typeof raw === "string") {
+    try {
+      parsedRaw = JSON.parse(raw as unknown as string);
+    } catch {
+      throw new Error("Claude returned malformed tool input. Please retry.");
+    }
+  }
+
+  const { pieces } = generateContentSchema.parse(parsedRaw);
 
   // 4. Persist pieces + update angle usage
   const results: GeneratedContentPiece[] = [];

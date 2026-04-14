@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
 import { GenerateButton } from "@/components/today/GenerateButton";
 import { ContentCard, type ContentCardPiece } from "@/components/today/ContentCard";
+import { toDisplayPercents } from "@/lib/utils/shares";
 
 export const metadata = { title: "Today · Evergreen Studio" };
 
@@ -33,6 +34,7 @@ export default async function TodayPage() {
   const hasPillars = pillars.length > 0;
   const totalShare = pillars.reduce((s, p) => s + p.targetShare, 0);
   const onTrack = Math.abs(totalShare - 1.0) <= 0.02;
+  const displayPercents = toDisplayPercents(pillars.map((p) => p.targetShare));
 
   // Fetch recent draft/approved pieces (last 7 days) so timezone doesn't hide them
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -100,8 +102,8 @@ export default async function TodayPage() {
         {hasPillars ? (
           <>
             <div className="flex h-2 rounded overflow-hidden bg-slate-bg">
-              {pillars.map((p) => {
-                const pct = Math.round(p.targetShare * 100);
+              {pillars.map((p, i) => {
+                const pct = displayPercents[i];
                 if (pct <= 0) return null;
                 return (
                   <div
@@ -113,13 +115,13 @@ export default async function TodayPage() {
               })}
             </div>
             <div className="flex flex-wrap gap-3 mt-2.5 text-[11px] font-mono text-slate-muted">
-              {pillars.map((p) => (
+              {pillars.map((p, i) => (
                 <span key={p.id} className="inline-flex items-center gap-1.5">
                   <span
                     className="w-2 h-2 rounded-sm inline-block"
                     style={{ background: p.color }}
                   />
-                  {p.name} {Math.round(p.targetShare * 100)}%
+                  {p.name} {displayPercents[i]}%
                 </span>
               ))}
             </div>

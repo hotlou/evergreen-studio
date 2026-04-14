@@ -136,6 +136,17 @@ export async function researchBrand(
 
   const raw = toolBlock.input as Record<string, unknown>;
 
+  // Defensive: unwrap stringified array/object fields
+  for (const key of ["pillars", "tabooWords"] as const) {
+    if (typeof raw[key] === "string") {
+      try {
+        raw[key] = JSON.parse(raw[key] as string);
+      } catch {
+        // leave as-is, Zod will report the error
+      }
+    }
+  }
+
   // Validate with Zod
   const result = researchResultSchema.parse(raw);
 

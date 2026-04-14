@@ -32,6 +32,7 @@ export async function POST(req: Request) {
 
   const form = await req.formData();
   const brandId = String(form.get("brandId") ?? "");
+  const purpose = String(form.get("purpose") ?? ""); // "creative" | ""
   const files = form.getAll("files").filter((f): f is File => f instanceof File);
   if (!brandId || files.length === 0) {
     return NextResponse.json(
@@ -55,6 +56,9 @@ export async function POST(req: Request) {
       const kind = classifyKind(file.type);
       const blob = await uploadFile(file, `brands/${brandId}/uploads`);
 
+      const baseTags: string[] = [kind];
+      if (purpose === "creative") baseTags.push("creative-asset");
+
       const asset = await prisma.mediaAsset.create({
         data: {
           brandId,
@@ -62,7 +66,7 @@ export async function POST(req: Request) {
           source: "uploaded",
           url: blob.url,
           caption: file.name,
-          tags: [kind],
+          tags: baseTags,
         },
       });
       assetIds.push(asset.id);
@@ -76,6 +80,7 @@ export async function POST(req: Request) {
     }
 
     revalidatePath("/app/library");
+    revalidatePath("/app/brand");
     return NextResponse.json({ assetIds, rejected });
   } catch (err) {
     console.error("Media upload error:", err);

@@ -1,10 +1,15 @@
 import Link from "next/link";
 import { getBrandContext } from "@/lib/brand";
+import { prisma } from "@/lib/db";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
 import { LogoUploader } from "@/components/brand/LogoUploader";
 import { ColorTokensEditor } from "@/components/brand/ColorTokensEditor";
 import { PasteAnythingPanel } from "@/components/brand/PasteAnythingPanel";
 import { ChannelsEditor } from "@/components/brand/ChannelsEditor";
+import {
+  BrandCreativeAssets,
+  type CreativeAsset,
+} from "@/components/brand/BrandCreativeAssets";
 import { VoiceGuideEditor } from "@/components/strategy/VoiceGuideEditor";
 import { TabooWordsEditor } from "@/components/strategy/TabooWordsEditor";
 
@@ -37,6 +42,24 @@ export default async function BrandPage() {
     background: tokens.background ?? "#F7F7F2",
     highlight: tokens.highlight ?? "#F4B942",
   };
+
+  const creativeAssetRows = await prisma.mediaAsset.findMany({
+    where: {
+      brandId: brand.id,
+      source: "uploaded",
+      tags: { has: "creative-asset" },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 60,
+  });
+  const creativeAssets: CreativeAsset[] = creativeAssetRows.map((a) => ({
+    id: a.id,
+    kind: a.kind,
+    url: a.url,
+    caption: a.caption,
+    tags: a.tags,
+    createdAt: a.createdAt.toISOString(),
+  }));
 
   return (
     <div className="px-8 py-7 max-w-4xl">
@@ -76,6 +99,10 @@ export default async function BrandPage() {
           initial={brand.voiceGuide ?? ""}
         />
         <TabooWordsEditor brandId={brand.id} initial={brand.taboosList} />
+      </div>
+
+      <div className="mb-4">
+        <BrandCreativeAssets brandId={brand.id} assets={creativeAssets} />
       </div>
 
       <section className="rounded-xl border border-slate-line bg-white p-5 mb-4">

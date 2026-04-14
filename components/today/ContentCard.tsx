@@ -345,11 +345,28 @@ export function ContentCard({
               </div>
             )}
           </div>
-          {imageError && (
-            <div className="mt-2 text-[11px] text-red-700 font-semibold">
-              {imageError}
+        </div>
+      )}
+
+      {/* Image generation error — always shown when present, not gated on media */}
+      {!editing && imageError && (
+        <div className="px-5 pb-3">
+          <div className="rounded-lg border border-red-100 bg-red-50 text-red-700 text-[11px] leading-relaxed px-3 py-2 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-bold uppercase tracking-wider text-[9px] mb-0.5">
+                Image generation failed
+              </div>
+              <div className="whitespace-pre-wrap break-words">{imageError}</div>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => setImageError(null)}
+              className="text-red-600 hover:text-red-800 shrink-0"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -444,7 +461,11 @@ export function ContentCard({
             ) : (
               <ImagePlus className="w-3 h-3" />
             )}
-            {generatingImage ? "Imagining…" : media.length > 0 ? "Another" : "Image"}
+            {generatingImage
+              ? "Generating…"
+              : media.length > 0
+              ? "Generate another"
+              : "Generate image"}
           </button>
 
           <div className="flex-1" />

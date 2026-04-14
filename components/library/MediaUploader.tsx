@@ -4,7 +4,19 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Loader2 } from "lucide-react";
 
-export function MediaUploader({ brandId }: { brandId: string }) {
+export function MediaUploader({
+  brandId,
+  purpose,
+  accept,
+  label,
+  helpText,
+}: {
+  brandId: string;
+  purpose?: "creative";
+  accept?: string;
+  label?: string;
+  helpText?: string;
+}) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -19,6 +31,7 @@ export function MediaUploader({ brandId }: { brandId: string }) {
     try {
       const form = new FormData();
       form.append("brandId", brandId);
+      if (purpose) form.append("purpose", purpose);
       for (const f of Array.from(files)) {
         form.append("files", f);
       }
@@ -67,7 +80,10 @@ export function MediaUploader({ brandId }: { brandId: string }) {
         ref={fileInput}
         type="file"
         multiple
-        accept="image/*,application/pdf,.doc,.docx,text/plain,text/markdown,video/mp4"
+        accept={
+          accept ??
+          "image/*,application/pdf,.doc,.docx,text/plain,text/markdown,video/mp4"
+        }
         className="hidden"
         onChange={(e) => {
           if (e.target.files && e.target.files.length > 0) {
@@ -86,11 +102,12 @@ export function MediaUploader({ brandId }: { brandId: string }) {
         <p className="text-sm text-slate-ink font-semibold">
           {uploading
             ? "Uploading…"
-            : "Drop images, PDFs, or docs here — or click to choose"}
+            : label ?? "Drop images, PDFs, or docs here — or click to choose"}
         </p>
       </div>
       <p className="text-[11px] text-slate-muted">
-        Images are auto-tagged by Claude vision. Max 10 MB image, 25 MB doc.
+        {helpText ??
+          "Images are auto-tagged by Claude vision. Max 10 MB image, 25 MB doc."}
       </p>
       <button
         type="button"

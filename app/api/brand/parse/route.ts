@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { parseBrandSignals, mergeBrandSignals } from "@/lib/brand-signals";
+import { tagImageFromFile } from "@/lib/media/vision";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,20 +41,50 @@ export async function POST(req: Request) {
     for (const f of files) {
       if (!(f instanceof File)) continue;
       if (f.size === 0) continue;
-      // Only read text-ish docs inline. PDFs/DOCX would need parsing; skip for now.
-      const ok =
+
+      // Images: describe via Claude vision, then feed the description as text.
+      if (f.type.startsWith("image/")) {
+        try {
+          const tags = await tagImageFromFile(f);
+          const descr = [
+            `Image: ${f.name}`,
+            `Subject: ${tags.subject}`,
+            `Emotion: ${tags.emotion}`,
+            `Caption: ${tags.caption}`,
+            tags.dominantColors.length
+              ? `Dominant colors: ${tags.dominantColors.join(", ")}`
+              : "",
+            tags.tags.length ? `Tags: ${tags.tags.join(", ")}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n");
+          attachedDocs.push({ name: f.name, text: descr });
+        } catch (err) {
+          console.error("vision failed on attachment:", err);
+          attachedDocs.push({
+            name: f.name,
+            text: `(Image "${f.name}" could not be described.)`,
+          });
+        }
+        continue;
+      }
+
+      // Text-ish docs: read inline.
+      const isText =
         f.type.startsWith("text/") ||
         f.name.toLowerCase().endsWith(".md") ||
         f.name.toLowerCase().endsWith(".txt");
-      if (!ok) {
-        attachedDocs.push({
-          name: f.name,
-          text: `(Binary file "${f.name}" attached — not inlined.)`,
-        });
+      if (isText) {
+        const txt = await f.text();
+        attachedDocs.push({ name: f.name, text: txt.slice(0, 20_000) });
         continue;
       }
-      const txt = await f.text();
-      attachedDocs.push({ name: f.name, text: txt.slice(0, 20_000) });
+
+      // PDF/DOCX etc: note attached but don't inline (no parser yet).
+      attachedDocs.push({
+        name: f.name,
+        text: `(Binary file "${f.name}" attached — not inlined. Describe its contents in your paste if relevant.)`,
+      });
     }
   } else {
     const body = await req.json();

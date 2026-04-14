@@ -104,9 +104,9 @@ export function PasteAnythingPanel({ brandId }: { brandId: string }) {
           </div>
         </div>
         <p className="text-sm text-slate-muted mt-1.5">
-          Dump in raw notes, URLs, competitor copy, review quotes, a voice
-          guide, a PDF, or anything in between. Claude extracts the signal and
-          folds it into your voice, taboos, and learnings.
+          Dump in raw notes, URLs, website/email copy, review quotes, a voice
+          guide, images, a PDF, or anything in between. Evergreen extracts it
+          all and folds it into your voice, taboos, and learnings.
         </p>
       </div>
 
@@ -128,7 +128,7 @@ export function PasteAnythingPanel({ brandId }: { brandId: string }) {
         <input
           ref={fileInput}
           type="file"
-          accept=".md,.txt,text/plain,text/markdown,.pdf,.doc,.docx"
+          accept=".md,.txt,text/plain,text/markdown,.pdf,.doc,.docx,image/png,image/jpeg,image/webp,image/gif"
           multiple
           className="hidden"
           onChange={(e) => {

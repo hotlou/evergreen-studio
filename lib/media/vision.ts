@@ -77,10 +77,29 @@ function normalizeImageMediaType(raw: string | null | undefined): AcceptedImageM
   return "image/jpeg";
 }
 
-// ── Tag image by URL ──
+// ── Tag image by URL or base64 ──
 
-export async function tagImageByUrl(imageUrl: string): Promise<VisionTags> {
+type ImageSource =
+  | { kind: "url"; url: string }
+  | { kind: "base64"; mediaType: AcceptedImageMediaType; data: string };
+
+async function tagImage(source: ImageSource): Promise<VisionTags> {
   const anthropic = new Anthropic();
+  const imageBlock =
+    source.kind === "url"
+      ? {
+          type: "image",
+          source: { type: "url", url: source.url },
+        }
+      : {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: source.mediaType,
+            data: source.data,
+          },
+        };
+
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 1024,
@@ -94,14 +113,8 @@ export async function tagImageByUrl(imageUrl: string): Promise<VisionTags> {
       {
         role: "user",
         content: [
-          {
-            type: "image",
-            source: {
-              type: "url",
-              url: imageUrl,
-            },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          imageBlock as any,
           {
             type: "text",
             text: "Tag this image using the tag_image tool.",
@@ -116,6 +129,17 @@ export async function tagImageByUrl(imageUrl: string): Promise<VisionTags> {
     throw new Error("Claude did not return vision tags");
   }
   return visionTagsSchema.parse(toolBlock.input);
+}
+
+export function tagImageByUrl(imageUrl: string): Promise<VisionTags> {
+  return tagImage({ kind: "url", url: imageUrl });
+}
+
+export async function tagImageFromFile(file: File): Promise<VisionTags> {
+  const mediaType = normalizeImageMediaType(file.type);
+  const ab = await file.arrayBuffer();
+  const data = Buffer.from(ab).toString("base64");
+  return tagImage({ kind: "base64", mediaType, data });
 }
 
 // Fire-and-forget: enrich a MediaAsset after upload with vision tags.
@@ -147,6 +171,4 @@ export async function enrichMediaAsset(mediaAssetId: string): Promise<void> {
   } catch (err) {
     console.error("enrichMediaAsset failed:", err);
   }
-  // Silence unused import guard for SDK type consistency
-  void normalizeImageMediaType;
 }

@@ -12,13 +12,12 @@ export const researchResultSchema = z.object({
         description: z.string(),
         targetShare: z.number().min(0).max(1),
         color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-        angles: z.array(z.string()).min(1).max(8),
+        angles: z.array(z.string()).min(1),
       })
     )
-    .min(2)
-    .max(7),
+    .min(2),
   voiceGuide: z.string().describe("Paragraph describing brand voice"),
-  tabooWords: z.array(z.string()).min(3).max(20),
+  tabooWords: z.array(z.string()).min(1),
   targetAudience: z.string().describe("Short target audience description"),
 });
 

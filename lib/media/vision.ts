@@ -2,19 +2,24 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { prisma } from "@/lib/db";
+import { normalizeHexColors } from "@/lib/media/color";
 
 // ── Schema ──
+// Accept any strings for dominantColors; we normalize after parse so we don't
+// reject responses that come back as "#fff", "rgb(...)", or plain hex.
 
-export const visionTagsSchema = z.object({
-  caption: z.string().max(300),
-  subject: z.string().max(80),
-  emotion: z.string().max(60),
-  dominantColors: z
-    .array(z.string().regex(/^#[0-9a-fA-F]{6}$/))
-    .max(6)
-    .default([]),
-  tags: z.array(z.string().min(1).max(40)).max(16).default([]),
-});
+export const visionTagsSchema = z
+  .object({
+    caption: z.string().max(300).default(""),
+    subject: z.string().max(80).default(""),
+    emotion: z.string().max(60).default(""),
+    dominantColors: z.array(z.string()).max(12).default([]),
+    tags: z.array(z.string().min(1).max(40)).max(16).default([]),
+  })
+  .transform((v) => ({
+    ...v,
+    dominantColors: normalizeHexColors(v.dominantColors).slice(0, 6),
+  }));
 
 export type VisionTags = z.infer<typeof visionTagsSchema>;
 
@@ -43,7 +48,9 @@ const TAG_IMAGE_TOOL: Tool = {
       },
       dominantColors: {
         type: "array",
-        description: "2-5 dominant colors as 6-digit hex strings.",
+        description:
+          "2-5 dominant colors as 6-digit uppercase hex strings like '#4EB35E'. " +
+          "Do NOT use rgb(), names, or 3-digit shorthand — always full 6-digit hex.",
         items: { type: "string" },
       },
       tags: {

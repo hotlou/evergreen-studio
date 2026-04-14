@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { prisma } from "@/lib/db";
 import { scrapeUrls } from "@/lib/research/scraper";
+import { normalizeHexColors } from "@/lib/media/color";
 
 // Extract URLs from arbitrary pasted text
 const URL_RE = /\bhttps?:\/\/[^\s<>"')]+/gi;
@@ -16,24 +17,26 @@ export function extractUrls(text: string): string[] {
 
 // ── Zod schema for parsed brand signals ──
 
-export const brandSignalsSchema = z.object({
-  summary: z.string().max(600),
-  voiceAdditions: z.string().max(4000).default(""),
-  taboos: z.array(z.string().min(1).max(80)).max(40).default([]),
-  learnings: z
-    .array(
-      z.object({
-        kind: z.enum(["do_this", "dont", "tone", "visual"]),
-        text: z.string().min(4).max(280),
-      })
-    )
-    .max(30)
-    .default([]),
-  colorHints: z
-    .array(z.string().regex(/^#[0-9a-fA-F]{6}$/))
-    .max(8)
-    .default([]),
-});
+export const brandSignalsSchema = z
+  .object({
+    summary: z.string().max(600).default(""),
+    voiceAdditions: z.string().max(4000).default(""),
+    taboos: z.array(z.string().min(1).max(80)).max(40).default([]),
+    learnings: z
+      .array(
+        z.object({
+          kind: z.enum(["do_this", "dont", "tone", "visual"]),
+          text: z.string().min(4).max(280),
+        })
+      )
+      .max(30)
+      .default([]),
+    colorHints: z.array(z.string()).max(16).default([]),
+  })
+  .transform((v) => ({
+    ...v,
+    colorHints: normalizeHexColors(v.colorHints).slice(0, 8),
+  }));
 
 export type BrandSignals = z.infer<typeof brandSignalsSchema>;
 

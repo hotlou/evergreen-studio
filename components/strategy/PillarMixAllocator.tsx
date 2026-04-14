@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Unlock } from "lucide-react";
+import { Lock, Unlock, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type AllocatorPillar = {
@@ -15,9 +15,7 @@ export type AllocatorPillar = {
 type Preset = {
   key: string;
   label: string;
-  /** Keywords that boost a pillar's weight when this preset is applied */
   keywords?: string[];
-  /** Or a custom resolver */
   compute?: (pillars: AllocatorPillar[]) => AllocatorPillar[];
 };
 
@@ -34,7 +32,6 @@ function normalizeTo100(pillars: AllocatorPillar[]): AllocatorPillar[] {
   if (unlocked.length === 0) return next;
 
   if (unlockedTotal === 0) {
-    // Split budget evenly among unlocked
     const base = Math.floor(budget / unlocked.length);
     unlocked.forEach((p) => (p.pct = base));
     let leftover = budget - base * unlocked.length;
@@ -42,11 +39,9 @@ function normalizeTo100(pillars: AllocatorPillar[]): AllocatorPillar[] {
       unlocked[i].pct += 1;
     }
   } else {
-    // Scale proportionally to budget
     unlocked.forEach((p) => {
       p.pct = round((p.pct / unlockedTotal) * budget);
     });
-    // Fix residual
     let residual = budget - unlocked.reduce((s, p) => s + p.pct, 0);
     let i = 0;
     while (residual !== 0 && i < unlocked.length * 2) {
@@ -79,7 +74,6 @@ function weightedByKeywords(
     locked: false,
     pct: round((scores[i] / total) * 100),
   }));
-  // Fix residual
   let residual = 100 - next.reduce((s, p) => s + p.pct, 0);
   let i = 0;
   while (residual !== 0 && i < next.length * 2) {
@@ -132,17 +126,19 @@ const PRESETS: Preset[] = [
 export function PillarMixAllocator({
   pillars,
   onChange,
+  onEditPillar,
 }: {
   pillars: AllocatorPillar[];
   onChange: (next: AllocatorPillar[]) => void;
+  onEditPillar?: (pillarId: string) => void;
 }) {
   const [dragging, setDragging] = useState<string | null>(null);
+  const [hoveredSeg, setHoveredSeg] = useState<string | null>(null);
   const total = pillars.reduce((s, p) => s + p.pct, 0);
   const balanced = total === 100;
   const over = total > 100;
 
   function rebalance(changedIdx: number, next: AllocatorPillar[]): AllocatorPillar[] {
-    // After changing one slider, redistribute the diff across other unlocked pillars
     const t = next.reduce((s, p) => s + p.pct, 0);
     const diff = 100 - t;
     if (diff === 0) return next;
@@ -151,7 +147,6 @@ export function PillarMixAllocator({
       .map((p, i) => ({ p, i }))
       .filter(({ p, i }) => !p.locked && i !== changedIdx && p.pct > 0);
     if (pool.length === 0) {
-      // fallback: any unlocked except changed
       const fb = next
         .map((p, i) => ({ p, i }))
         .filter(({ p, i }) => !p.locked && i !== changedIdx);
@@ -165,7 +160,6 @@ export function PillarMixAllocator({
         p.pct = Math.max(0, p.pct + share);
       });
     }
-    // Round + fix residual
     next.forEach((p) => (p.pct = round(p.pct)));
     let residual = 100 - next.reduce((s, p) => s + p.pct, 0);
     const candidates = next
@@ -179,9 +173,7 @@ export function PillarMixAllocator({
 
   function handleSliderChange(idx: number, value: number) {
     const pct = Math.max(0, Math.min(100, value));
-    const next = pillars.map((p, i) =>
-      i === idx ? { ...p, pct } : { ...p }
-    );
+    const next = pillars.map((p, i) => (i === idx ? { ...p, pct } : { ...p }));
     const rebalanced = rebalance(idx, next);
     onChange(rebalanced);
   }
@@ -195,13 +187,9 @@ export function PillarMixAllocator({
 
   function applyPreset(preset: Preset) {
     let next: AllocatorPillar[];
-    if (preset.compute) {
-      next = preset.compute(pillars);
-    } else if (preset.keywords) {
-      next = weightedByKeywords(pillars, preset.keywords);
-    } else {
-      return;
-    }
+    if (preset.compute) next = preset.compute(pillars);
+    else if (preset.keywords) next = weightedByKeywords(pillars, preset.keywords);
+    else return;
     onChange(next);
   }
 
@@ -216,7 +204,7 @@ export function PillarMixAllocator({
             Content mix
           </div>
           <div className="text-sm text-slate-muted mt-0.5">
-            How often each pillar shows up in your feed
+            Hover a segment to see details · click the eye to edit
           </div>
         </div>
         <div
@@ -237,43 +225,68 @@ export function PillarMixAllocator({
         </div>
       </div>
 
-      {/* Stacked bar */}
-      <div className="flex w-full h-11 rounded-lg overflow-hidden bg-slate-bg select-none">
-        {pillars.map((p, i) => {
-          if (p.pct <= 0) return null;
-          const showLabel = p.pct >= 6;
-          return (
-            <div
-              key={p.id}
-              style={{ flex: `${p.pct} 0 0`, background: p.color }}
-              title={`${p.name} — ${p.pct}%`}
-              className={cn(
-                "relative transition-all duration-150 flex items-center justify-center text-white font-semibold text-xs",
-                i > 0 && "border-l-2 border-white",
-                dragging === p.id && "brightness-110"
-              )}
-            >
-              {showLabel && `${p.pct}%`}
-            </div>
-          );
-        })}
-      </div>
+      {/* Stacked bar with tooltip + click-to-edit */}
+      <div className="relative">
+        <div className="flex w-full h-11 rounded-lg overflow-hidden bg-slate-bg select-none">
+          {pillars.map((p, i) => {
+            if (p.pct <= 0) return null;
+            const showPctLabel = p.pct >= 6;
+            const showEye = p.pct >= 4;
+            return (
+              <div
+                key={p.id}
+                style={{ flex: `${p.pct} 0 0`, background: p.color }}
+                onMouseEnter={() => setHoveredSeg(p.id)}
+                onMouseLeave={() => setHoveredSeg((v) => (v === p.id ? null : v))}
+                className={cn(
+                  "group relative transition-all duration-150 flex items-center justify-center text-white font-semibold text-xs cursor-pointer",
+                  i > 0 && "border-l-2 border-white",
+                  dragging === p.id && "brightness-110",
+                  hoveredSeg === p.id && "brightness-110"
+                )}
+                onClick={() => onEditPillar?.(p.id)}
+              >
+                {showPctLabel && `${p.pct}%`}
+                {showEye && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEditPillar?.(p.id);
+                    }}
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/25 hover:bg-white/40 rounded p-0.5"
+                    title={`Edit ${p.name}`}
+                  >
+                    <Eye className="w-3 h-3" />
+                  </button>
+                )}
 
-      {/* Legend chips */}
-      <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 mt-2.5 text-xs text-slate-muted">
-        {pillars.map((p) => {
-          if (p.pct <= 0) return null;
-          const short = p.name.length > 34 ? p.name.slice(0, 32) + "…" : p.name;
-          return (
-            <span key={p.id} className="inline-flex items-center gap-1.5">
-              <span
-                className="w-2.5 h-2.5 rounded-sm inline-block"
-                style={{ background: p.color }}
-              />
-              {short}
-            </span>
-          );
-        })}
+                {/* Tooltip */}
+                {hoveredSeg === p.id && (
+                  <div
+                    className="absolute top-full mt-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none"
+                    style={{ minWidth: "max-content" }}
+                  >
+                    <div className="bg-slate-ink text-white text-xs rounded-lg px-3 py-2 shadow-lg whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-sm"
+                          style={{ background: p.color }}
+                        />
+                        <span className="font-semibold">{p.name}</span>
+                        <span className="font-mono opacity-70">{p.pct}%</span>
+                      </div>
+                    </div>
+                    <div
+                      className="w-2 h-2 bg-slate-ink absolute left-1/2 -translate-x-1/2 -top-1 rotate-45"
+                      aria-hidden="true"
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Presets */}
@@ -291,13 +304,13 @@ export function PillarMixAllocator({
         ))}
       </div>
 
-      {/* Per-pillar rows */}
+      {/* Per-pillar slider rows */}
       <div className="mt-6 flex flex-col gap-2">
         {pillars.map((p, i) => (
           <div
             key={p.id}
             className={cn(
-              "grid grid-cols-[14px_minmax(0,1fr)_minmax(140px,200px)_44px_28px] gap-3 items-center px-3 py-2.5 rounded-lg border transition",
+              "grid grid-cols-[14px_minmax(0,1fr)_minmax(140px,220px)_44px_28px_28px] gap-3 items-center px-3 py-2.5 rounded-lg border transition",
               p.locked
                 ? "bg-slate-bg border-slate-line"
                 : "bg-white border-slate-line"
@@ -335,6 +348,14 @@ export function PillarMixAllocator({
             </div>
             <button
               type="button"
+              onClick={() => onEditPillar?.(p.id)}
+              className="flex items-center justify-center p-1.5 rounded text-slate-muted hover:bg-slate-bg hover:text-slate-ink transition"
+              title="Edit pillar"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
               onClick={() => handleLockToggle(i)}
               className={cn(
                 "flex items-center justify-center p-1.5 rounded transition",
@@ -344,7 +365,11 @@ export function PillarMixAllocator({
               )}
               title={p.locked ? "Unlock" : "Lock"}
             >
-              {p.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+              {p.locked ? (
+                <Lock className="w-3.5 h-3.5" />
+              ) : (
+                <Unlock className="w-3.5 h-3.5" />
+              )}
             </button>
           </div>
         ))}

@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useCallback } from "react";
 import { Plus } from "lucide-react";
-import { PillarCard } from "./PillarCard";
+import { EditPillarDialog } from "./EditPillarDialog";
 import {
   PillarMixAllocator,
   type AllocatorPillar,
@@ -36,7 +36,6 @@ export function PillarList({
   brandId: string;
   pillars: Pillar[];
 }) {
-  // Map pillars to the allocator shape, seeding locked state from a local key
   const [allocator, setAllocator] = useState<AllocatorPillar[]>(() => {
     const pcts = toDisplayPercents(initialPillars.map((p) => p.targetShare));
     return initialPillars.map((p, i) => ({
@@ -48,14 +47,14 @@ export function PillarList({
     }));
   });
   const [newPillarName, setNewPillarName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Sync when pillars change from server (new pillar added / deleted / renamed / recolored)
+  // Sync when pillars change from server
   useEffect(() => {
     setAllocator((prev) => {
-      // If any pillar was added or removed, re-seed from server using largest-remainder
       const prevIds = new Set(prev.map((p) => p.id));
       const nextIds = new Set(initialPillars.map((p) => p.id));
       const added = initialPillars.some((p) => !prevIds.has(p.id));
@@ -73,7 +72,6 @@ export function PillarList({
           locked: false,
         }));
       }
-      // Otherwise only update name/color to reflect server updates, keep user's pct edits
       return initialPillars.map((p) => {
         const prior = prev.find((x) => x.id === p.id);
         return {
@@ -90,7 +88,6 @@ export function PillarList({
   const total = allocator.reduce((s, p) => s + p.pct, 0);
   const balanced = total === 100;
 
-  // Debounced auto-save when shares are balanced
   const autoSave = useCallback(
     (next: AllocatorPillar[]) => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -117,18 +114,6 @@ export function PillarList({
     autoSave(next);
   }
 
-  function saveShares() {
-    const shareList = allocator.map((p) => ({
-      pillarId: p.id,
-      targetShare: p.pct / 100,
-    }));
-    startTransition(() => {
-      updatePillarShares(brandId, shareList);
-    });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
-
   function handleAddPillar() {
     const name = newPillarName.trim();
     if (!name) return;
@@ -138,30 +123,14 @@ export function PillarList({
     setNewPillarName("");
   }
 
-  // Map pillar share % back for individual PillarCard display
-  const sharesById: Record<string, number> = {};
-  for (const a of allocator) sharesById[a.id] = a.pct;
+  const editingPillar =
+    editingId !== null
+      ? initialPillars.find((p) => p.id === editingId) ?? null
+      : null;
 
   return (
-    <div className="space-y-5">
-      {/* Save button bar (only shown when unbalanced) */}
-      {allocator.length > 0 && !balanced && (
-        <div className="flex items-center justify-between">
-          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
-            Content Pillars
-          </div>
-          <button
-            type="button"
-            onClick={saveShares}
-            disabled
-            className="rounded-lg text-xs font-semibold px-3 py-1.5 bg-slate-line text-slate-muted cursor-not-allowed"
-          >
-            Must sum to 100%
-          </button>
-        </div>
-      )}
-
-      {allocator.length > 0 && balanced && (
+    <div className="space-y-4">
+      {allocator.length > 0 && (
         <div className="flex items-center justify-between">
           <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
             Content Pillars
@@ -169,43 +138,29 @@ export function PillarList({
           <span
             className={cn(
               "text-[10px] font-mono font-bold",
-              saved ? "text-evergreen-600" : "text-slate-muted"
+              balanced
+                ? saved
+                  ? "text-evergreen-600"
+                  : "text-slate-muted"
+                : "text-amber-600"
             )}
           >
-            {saved ? "● Auto-saved" : pending ? "● Saving…" : "● Up to date"}
+            {!balanced
+              ? "● Must sum to 100%"
+              : saved
+              ? "● Auto-saved"
+              : pending
+              ? "● Saving…"
+              : "● Up to date"}
           </span>
         </div>
       )}
 
-      {/* The allocator */}
       <PillarMixAllocator
         pillars={allocator}
         onChange={handleAllocatorChange}
+        onEditPillar={(id) => setEditingId(id)}
       />
-
-      {/* Pillar cards (angles + description editing) */}
-      {initialPillars.length > 0 && (
-        <div>
-          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold mb-3">
-            Pillar details · angles, descriptions
-          </div>
-          <div className="space-y-2.5">
-            {initialPillars.map((p) => (
-              <PillarCard
-                key={p.id}
-                pillar={p}
-                sharePercent={sharesById[p.id] ?? 0}
-                onShareChange={(v) => {
-                  const next = allocator.map((a) =>
-                    a.id === p.id ? { ...a, pct: Math.max(0, Math.min(100, v)) } : a
-                  );
-                  handleAllocatorChange(next);
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Add pillar */}
       <div className="flex gap-2">
@@ -231,6 +186,13 @@ export function PillarList({
           <Plus className="w-4 h-4" /> Add pillar
         </button>
       </div>
+
+      {/* Edit dialog */}
+      <EditPillarDialog
+        pillar={editingPillar}
+        open={editingId !== null}
+        onClose={() => setEditingId(null)}
+      />
     </div>
   );
 }

@@ -170,6 +170,8 @@ export type AcceptResearchInput = {
   acceptVoice: boolean;
   /** Whether to accept/merge taboo words (always merge, never replace) */
   acceptTaboos: boolean;
+  /** How to handle existing pillars. "add" keeps them; "replace" deletes them first. */
+  mergeMode?: "add" | "replace";
 };
 
 export async function acceptResearch(
@@ -182,6 +184,17 @@ export async function acceptResearch(
   const selectedPillars = input.pillarIndices.map((i) => result.pillars[i]).filter(Boolean);
 
   await prisma.$transaction(async (tx) => {
+    // If "replace" mode, archive all existing pillars' pieces first, then delete them
+    if (input.mergeMode === "replace") {
+      // Mark any draft/approved pieces as archived so they stay recoverable
+      await tx.contentPiece.updateMany({
+        where: { brandId, status: { in: ["draft", "approved"] } },
+        data: { status: "archived" },
+      });
+      // Cascade deletes angles via FK
+      await tx.contentPillar.deleteMany({ where: { brandId } });
+    }
+
     // Create selected pillars + their angles
     const existingPillars = await tx.contentPillar.findMany({
       where: { brandId },

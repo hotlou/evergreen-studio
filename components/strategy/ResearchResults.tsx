@@ -14,21 +14,29 @@ export function ResearchResults({
   brandId,
   result,
   hasExistingPillars,
+  initialMergeMode = "add",
   onDismiss,
   onAccepted,
 }: {
   brandId: string;
   result: ResearchResult;
   hasExistingPillars: boolean;
+  initialMergeMode?: "add" | "replace";
   onDismiss: () => void;
   onAccepted: () => void;
 }) {
-  // When no pillars exist → all selected by default
-  // When pillars exist → all unchecked (merge mode)
+  // Selection defaults:
+  // - No existing pillars → all selected
+  // - Add mode → none selected (let user pick additions)
+  // - Replace mode → all selected (user chose to start fresh)
+  const defaultSelected = !hasExistingPillars || initialMergeMode === "replace";
   const [selectedPillars, setSelectedPillars] = useState<Set<number>>(
-    () => new Set(hasExistingPillars ? [] : result.pillars.map((_, i) => i))
+    () =>
+      new Set(defaultSelected ? result.pillars.map((_, i) => i) : [])
   );
-  const [acceptVoice, setAcceptVoice] = useState(!hasExistingPillars);
+  const [acceptVoice, setAcceptVoice] = useState(
+    !hasExistingPillars || initialMergeMode === "replace"
+  );
   const [acceptTaboos, setAcceptTaboos] = useState(true);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -47,11 +55,11 @@ export function ResearchResults({
       pillarIndices: Array.from(selectedPillars).sort(),
       acceptVoice,
       acceptTaboos,
+      mergeMode: initialMergeMode,
     };
     startTransition(async () => {
       await acceptResearch(brandId, result, input);
       setSaved(true);
-      // Give user a moment to see the success state, then refresh
       setTimeout(() => onAccepted(), 1500);
     });
   }
@@ -90,6 +98,16 @@ export function ResearchResults({
           <span className="font-semibold text-sm text-slate-ink">
             AI Research Results
           </span>
+          {hasExistingPillars && initialMergeMode === "replace" && (
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-red-50 text-red-700 rounded-full px-2 py-0.5">
+              Replace mode
+            </span>
+          )}
+          {hasExistingPillars && initialMergeMode === "add" && (
+            <span className="text-[10px] font-bold uppercase tracking-wider bg-evergreen-50 text-evergreen-700 rounded-full px-2 py-0.5">
+              Add mode
+            </span>
+          )}
         </div>
         <button
           type="button"

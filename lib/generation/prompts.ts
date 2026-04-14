@@ -54,6 +54,16 @@ export const GENERATE_CONTENT_TOOL: Tool = {
   },
 };
 
+// ── Helpers ──────────────────────────────────────────────────
+
+function getSeason(date: Date): string {
+  const m = date.getMonth() + 1;
+  if (m >= 3 && m <= 5) return "Spring";
+  if (m >= 6 && m <= 8) return "Summer";
+  if (m >= 9 && m <= 11) return "Fall";
+  return "Winter";
+}
+
 // ── Prompt builder ───────────────────────────────────────────
 
 export function buildGenerationPrompt(input: {
@@ -64,8 +74,27 @@ export function buildGenerationPrompt(input: {
   recentBodies: string[];
   learnings: { kind: string; content: string }[];
 }): { system: string; user: string } {
+  // Today's date + cultural context hint — Claude knows holidays/seasons/events
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+  const month = now.toLocaleDateString("en-US", { month: "long" });
+  const season = getSeason(now);
+
   const system = [
     `You are a social media content strategist writing Instagram captions for "${input.brandName}".`,
+    "",
+    `## Today's Context`,
+    `- Date: ${dateStr}`,
+    `- Season: ${season} (Northern Hemisphere)`,
+    `- Current month: ${month}`,
+    `- If (and only if) there's a cultural moment in the next 2 weeks that genuinely fits`,
+    `  this brand — a holiday, seasonal shift, sporting event, awareness day, etc. — you`,
+    `  may weave it in. Do not force connections. Most captions should ignore the calendar.`,
     "",
     "## Your Voice",
     input.voiceGuide || "Write in a professional but approachable tone.",

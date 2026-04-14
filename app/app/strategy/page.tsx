@@ -6,6 +6,7 @@ import { ResearchButton } from "@/components/strategy/ResearchButton";
 import { PillarList } from "@/components/strategy/PillarList";
 import { VoiceGuideEditor } from "@/components/strategy/VoiceGuideEditor";
 import { TabooWordsEditor } from "@/components/strategy/TabooWordsEditor";
+import { RedirectButton } from "@/components/strategy/RedirectButton";
 
 export const metadata = { title: "Strategy · Evergreen Studio" };
 
@@ -83,18 +84,31 @@ export default async function StrategyPage() {
       {/* Pillars + angles */}
       <div className="mb-6">
         <PillarList brandId={brand.id} pillars={pillarData} />
+        <div className="mt-2">
+          <RedirectButton brandId={brand.id} scope="pillars" label="pillars" />
+        </div>
       </div>
 
       {/* Voice + Taboos side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <VoiceGuideEditor
-          brandId={brand.id}
-          initial={brand.voiceGuide ?? ""}
-        />
-        <TabooWordsEditor
-          brandId={brand.id}
-          initial={brand.taboosList}
-        />
+        <div>
+          <VoiceGuideEditor
+            brandId={brand.id}
+            initial={brand.voiceGuide ?? ""}
+          />
+          <div className="mt-2">
+            <RedirectButton brandId={brand.id} scope="voice" label="voice" />
+          </div>
+        </div>
+        <div>
+          <TabooWordsEditor
+            brandId={brand.id}
+            initial={brand.taboosList}
+          />
+          <div className="mt-2">
+            <RedirectButton brandId={brand.id} scope="taboos" label="taboos" />
+          </div>
+        </div>
       </div>
     </div>
   );

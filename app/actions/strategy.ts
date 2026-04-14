@@ -269,3 +269,91 @@ export async function dismissResearch(brandId: string) {
   });
   revalidatePath("/app/strategy");
 }
+
+// ── Apply redirect results ──────────────────────────────────
+
+export async function applyRedirectVoice(brandId: string, voiceGuide: string) {
+  await requireBrandAccess(brandId);
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { voiceGuide },
+  });
+  revalidatePath("/app/strategy");
+}
+
+export async function applyRedirectTaboos(brandId: string, tabooWords: string[]) {
+  await requireBrandAccess(brandId);
+  const cleaned = tabooWords
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean)
+    .filter((v, i, a) => a.indexOf(v) === i);
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { taboosList: cleaned },
+  });
+  revalidatePath("/app/strategy");
+}
+
+export async function applyRedirectPillars(
+  brandId: string,
+  pillars: {
+    name: string;
+    description: string;
+    targetShare: number;
+    color: string;
+    angles: string[];
+  }[],
+  mode: "replace" | "append"
+) {
+  await requireBrandAccess(brandId);
+  const shareSum = pillars.reduce((s, p) => s + p.targetShare, 0) || 1;
+
+  await prisma.$transaction(async (tx) => {
+    if (mode === "replace") {
+      // Delete existing pillars + cascade deletes angles
+      await tx.contentPillar.deleteMany({ where: { brandId } });
+    }
+
+    const existingCount =
+      mode === "append"
+        ? await tx.contentPillar.count({ where: { brandId } })
+        : 0;
+
+    for (let i = 0; i < pillars.length; i++) {
+      const p = pillars[i];
+      const pillar = await tx.contentPillar.create({
+        data: {
+          brandId,
+          name: p.name,
+          description: p.description,
+          targetShare: p.targetShare, // normalized below
+          color: p.color,
+          sortOrder: existingCount + i,
+        },
+      });
+
+      for (const angleTitle of p.angles) {
+        await tx.angle.create({
+          data: { pillarId: pillar.id, title: angleTitle },
+        });
+      }
+    }
+
+    // Normalize ALL shares to sum to 1.0
+    const allPillars = await tx.contentPillar.findMany({
+      where: { brandId },
+      select: { id: true, targetShare: true },
+    });
+    const rawSum = allPillars.reduce((s, p) => s + p.targetShare, 0) || 1;
+    for (const p of allPillars) {
+      await tx.contentPillar.update({
+        where: { id: p.id },
+        data: { targetShare: p.targetShare / rawSum },
+      });
+    }
+    void shareSum;
+  });
+
+  revalidatePath("/app/strategy");
+  revalidatePath("/app/today");
+}

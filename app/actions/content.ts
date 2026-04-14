@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { rewritePiece, type RewriteInstruction } from "@/lib/generation/rewrite";
+import { captureLearningFromEdit } from "@/lib/learnings/capture";
 
 async function requirePieceAccess(pieceId: string) {
   const session = await auth();
@@ -39,12 +40,24 @@ export async function unapprovePiece(pieceId: string) {
 }
 
 export async function updatePieceBody(pieceId: string, body: string) {
-  await requirePieceAccess(pieceId);
+  const piece = await requirePieceAccess(pieceId);
+  const originalBody = piece.body;
   await prisma.contentPiece.update({
     where: { id: pieceId },
     data: { body },
   });
+
+  // Fire-and-forget: ask Claude if this edit reveals a brand learning.
+  // Intentionally not awaited — edit UX shouldn't wait on it.
+  captureLearningFromEdit({
+    brandId: piece.brandId,
+    originalBody,
+    revisedBody: body,
+    source: "edit",
+  });
+
   revalidatePath("/app/today");
+  revalidatePath("/app/library");
 }
 
 export async function archivePiece(pieceId: string) {

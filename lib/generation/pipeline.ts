@@ -55,12 +55,12 @@ export async function generateContentPack(
     take: 15,
   });
 
-  // Brand learnings (M5 — may be empty for now)
+  // Brand learnings (M5) — promoted rules first, then highest-strength learnings
   const learnings = await prisma.brandLearning.findMany({
     where: { brandId },
-    select: { kind: true, text: true },
-    orderBy: { strength: "desc" },
-    take: 10,
+    select: { kind: true, text: true, promotedToRule: true },
+    orderBy: [{ promotedToRule: "desc" }, { strength: "desc" }],
+    take: 12,
   });
 
   // 3. Build prompt and call Claude
@@ -70,7 +70,10 @@ export async function generateContentPack(
     taboos: brand.taboosList,
     slots,
     recentBodies: recentPieces.map((p) => p.body),
-    learnings: learnings.map((l) => ({ kind: l.kind, content: l.text })),
+    learnings: learnings.map((l) => ({
+      kind: l.promotedToRule ? `${l.kind} (RULE)` : l.kind,
+      content: l.text,
+    })),
   });
 
   const anthropic = new Anthropic();

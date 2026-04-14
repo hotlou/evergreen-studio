@@ -1,7 +1,17 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Check, Pencil, Trash2, Undo2, Wand2, ChevronDown } from "lucide-react";
+import { useState, useTransition, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  Check,
+  Pencil,
+  Trash2,
+  Undo2,
+  Wand2,
+  ChevronDown,
+  ArrowRight,
+} from "lucide-react";
 import {
   approvePiece,
   unapprovePiece,
@@ -40,25 +50,57 @@ const CHANNEL_LABELS: Record<string, { name: string; suitable: string[] }> = {
   threads: { name: "Threads", suitable: ["Instagram", "X"] },
 };
 
-export function ContentCard({ piece }: { piece: ContentCardPiece }) {
+export function ContentCard({
+  piece,
+  context = "today",
+}: {
+  piece: ContentCardPiece;
+  context?: "today" | "library";
+}) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(piece.body);
   const [pending, startTransition] = useTransition();
   const [showRewriteMenu, setShowRewriteMenu] = useState(false);
+
+  // Local display state for optimistic UX
+  const [displayBody, setDisplayBody] = useState(piece.body);
+  const [phase, setPhase] = useState<
+    "idle" | "rewriting" | "just-rewritten" | "just-approved"
+  >("idle");
+  const [rewriteNote, setRewriteNote] = useState<string | null>(null);
 
   const isApproved = piece.status === "approved";
   const channelInfo = CHANNEL_LABELS[piece.channel] ?? {
     name: piece.channel,
     suitable: [],
   };
-  const charCount = piece.body.length;
+  const charCount = displayBody.length;
+
+  // After rewrite, fade the green pulse after 2.5s
+  useEffect(() => {
+    if (phase === "just-rewritten") {
+      const t = setTimeout(() => setPhase("idle"), 2500);
+      return () => clearTimeout(t);
+    }
+  }, [phase]);
 
   function handleApprove() {
-    startTransition(async () => {
-      if (isApproved) {
+    if (isApproved) {
+      startTransition(async () => {
         await unapprovePiece(piece.id);
+      });
+      return;
+    }
+    // Optimistic: show "just-approved" state, then refresh so card disappears on Today
+    startTransition(async () => {
+      await approvePiece(piece.id);
+      if (context === "today") {
+        setPhase("just-approved");
+        // Wait for user to see the confirmation, then refresh
+        setTimeout(() => router.refresh(), 1800);
       } else {
-        await approvePiece(piece.id);
+        router.refresh();
       }
     });
   }
@@ -66,6 +108,7 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
   function handleSaveEdit() {
     startTransition(async () => {
       await updatePieceBody(piece.id, editBody);
+      setDisplayBody(editBody);
       setEditing(false);
     });
   }
@@ -76,22 +119,69 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
     });
   }
 
-  function handleRewrite(instruction: RewriteInstruction) {
+  async function handleRewrite(instruction: RewriteInstruction) {
     setShowRewriteMenu(false);
-    startTransition(async () => {
-      await rewritePieceAction(piece.id, instruction);
-    });
+    setPhase("rewriting");
+    try {
+      const result = await rewritePieceAction(piece.id, instruction);
+      // Optimistically show new body
+      setDisplayBody(result.body);
+      setEditBody(result.body);
+      setRewriteNote(instruction.replace("_", " "));
+      setPhase("just-rewritten");
+    } catch (err) {
+      console.error(err);
+      setPhase("idle");
+    }
+  }
+
+  // Just-approved confirmation card (replaces the regular card briefly)
+  if (phase === "just-approved" && context === "today") {
+    return (
+      <div className="rounded-xl border border-evergreen-500 bg-evergreen-50 p-6 text-center anim-fade-in">
+        <div className="inline-flex items-center gap-2 bg-evergreen-500 text-white rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-wider mb-3">
+          <Check className="w-3.5 h-3.5" /> Approved
+        </div>
+        <p className="text-sm text-evergreen-800 font-medium mb-3">
+          Saved to your Library.
+        </p>
+        <Link
+          href="/app/library?tab=approved"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-evergreen-700 hover:text-evergreen-800 transition"
+        >
+          View in Library <ArrowRight className="w-3 h-3" />
+        </Link>
+      </div>
+    );
   }
 
   return (
     <div
       className={cn(
-        "rounded-xl border bg-white transition",
+        "rounded-xl border bg-white transition-all duration-500 relative",
         isApproved
           ? "border-evergreen-500 shadow-md shadow-evergreen-100"
-          : "border-slate-line"
+          : "border-slate-line",
+        phase === "just-rewritten" &&
+          "ring-2 ring-evergreen-400 ring-offset-2 anim-rewrite-pulse"
       )}
     >
+      {/* Rewrite success banner */}
+      {phase === "just-rewritten" && rewriteNote && (
+        <div className="absolute -top-2 left-4 right-4 flex justify-center pointer-events-auto z-10">
+          <div className="inline-flex items-center gap-1.5 bg-evergreen-500 text-white rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider shadow-lg anim-toast-in">
+            <Check className="w-3 h-3" />
+            Rewritten ({rewriteNote}) · original moved to{" "}
+            <Link
+              href="/app/library?tab=drafts"
+              className="underline hover:text-evergreen-100"
+            >
+              Drafts
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Header: pillar chip + angle + channel meta */}
       <div className="px-5 pt-4 pb-3 border-b border-slate-line">
         <div className="flex items-center gap-2 flex-wrap">
@@ -162,8 +252,23 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
             </div>
           </div>
         ) : (
-          <div className="text-[13px] leading-relaxed text-slate-ink whitespace-pre-wrap">
-            {piece.body}
+          <div className="relative">
+            {phase === "rewriting" && (
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center rounded-lg z-10">
+                <div className="inline-flex items-center gap-2 text-xs font-semibold text-evergreen-700">
+                  <div className="w-3 h-3 border-2 border-evergreen-300 border-t-evergreen-600 rounded-full animate-spin" />
+                  Rewriting…
+                </div>
+              </div>
+            )}
+            <div
+              className={cn(
+                "text-[13px] leading-relaxed text-slate-ink whitespace-pre-wrap transition-opacity duration-300",
+                phase === "rewriting" && "opacity-30"
+              )}
+            >
+              {displayBody}
+            </div>
           </div>
         )}
       </div>

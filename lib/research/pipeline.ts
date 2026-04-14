@@ -108,19 +108,30 @@ export async function researchBrand(
     cache_control: { type: "ephemeral" },
   };
 
+  // Web search tool (server-side, executed by Anthropic)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- web_search tool not in SDK types
+  const webSearchTool: any = {
+    type: "web_search_20250305",
+    name: "web_search",
+    max_uses: 5,
+  };
+
   const response = await anthropic.messages.create({
     model: "claude-opus-4-6",
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: [systemBlock],
-    tools: [PROPOSE_STRATEGY_TOOL],
-    tool_choice: { type: "tool", name: "propose_strategy" },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mixed tool types
+    tools: [webSearchTool, PROPOSE_STRATEGY_TOOL] as any,
+    // Don't force tool_choice — let Claude search first, then call propose_strategy
     messages: [{ role: "user", content: user }],
   });
 
-  // Extract result from tool-use response
-  const toolBlock = response.content.find((b) => b.type === "tool_use");
+  // Extract result from tool-use response (find the propose_strategy call)
+  const toolBlock = response.content.find(
+    (b) => b.type === "tool_use" && b.name === "propose_strategy"
+  );
   if (!toolBlock || toolBlock.type !== "tool_use") {
-    throw new Error("Claude did not return a tool-use response");
+    throw new Error("Claude did not return a propose_strategy tool call");
   }
 
   const raw = toolBlock.input as Record<string, unknown>;

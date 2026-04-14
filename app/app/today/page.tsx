@@ -41,7 +41,10 @@ export default async function TodayPage() {
     where: {
       brandId: brand.id,
       channel: "instagram",
-      status: { in: ["draft", "approved"] },
+      // Today shows only fresh drafts: not archived, not approved (those moved to Library),
+      // and not superseded by a rewrite
+      status: "draft",
+      supersededById: null,
       generatedAt: { gte: sevenDaysAgo },
     },
     include: {

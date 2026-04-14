@@ -81,17 +81,27 @@ export async function rewritePiece(
   // Validate
   generatedPieceSchema.shape.body.parse(newBody);
 
-  // Create new piece (preserve original)
-  const created = await prisma.contentPiece.create({
-    data: {
-      brandId: piece.brandId,
-      pillarId: piece.pillarId,
-      angleId: piece.angleId,
-      channel: piece.channel,
-      body: newBody,
-      reasonWhy: `Rewritten (${instruction.replace("_", " ")}) from piece created ${piece.generatedAt.toLocaleDateString()}.`,
-      status: "draft",
-    },
+  // Create new piece and mark original as superseded — preserves history
+  const created = await prisma.$transaction(async (tx) => {
+    const newPiece = await tx.contentPiece.create({
+      data: {
+        brandId: piece.brandId,
+        pillarId: piece.pillarId,
+        angleId: piece.angleId,
+        channel: piece.channel,
+        body: newBody,
+        reasonWhy: `Rewritten (${instruction.replace("_", " ")}) from piece created ${piece.generatedAt.toLocaleDateString()}.`,
+        status: "draft",
+      },
+    });
+
+    // Mark original as superseded — Today view hides, Library still shows
+    await tx.contentPiece.update({
+      where: { id: piece.id },
+      data: { supersededById: newPiece.id, status: "draft" },
+    });
+
+    return newPiece;
   });
 
   return { id: created.id, body: created.body, reasonWhy: created.reasonWhy };

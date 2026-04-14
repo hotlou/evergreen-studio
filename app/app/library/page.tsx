@@ -122,7 +122,7 @@ export default async function LibraryPage({
       ) : (
         <div className="space-y-4">
           {cardPieces.map((piece) => (
-            <ContentCard key={piece.id} piece={piece} />
+            <ContentCard key={piece.id} piece={piece} context="library" />
           ))}
         </div>
       )}

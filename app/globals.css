@@ -35,3 +35,30 @@ body {
   background: #EEF8F0;
   color: #2C5D32;
 }
+
+/* Fade-in for confirmation cards */
+@keyframes card-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-fade-in {
+  animation: card-fade-in 300ms ease-out;
+}
+
+/* Slide-from-top for rewrite toast */
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-toast-in {
+  animation: toast-slide-in 300ms ease-out;
+}
+
+/* Pulse for just-rewritten card edge */
+@keyframes rewrite-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(78, 179, 94, 0.6); }
+  50%      { box-shadow: 0 0 0 6px rgba(78, 179, 94, 0); }
+}
+.anim-rewrite-pulse {
+  animation: rewrite-pulse 1.5s ease-out 2;
+}

@@ -221,6 +221,8 @@ model ContentPiece {
   status       PieceStatus @default(draft)
   reasonWhy    String?     @db.Text // the "why this" line
   generatedAt  DateTime    @default(now())
+  // M4: track rewrites — this piece was superseded by supersededById
+  supersededById String?
   // embedding vector(1536) — added via raw SQL in M4
 
   brand   Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)

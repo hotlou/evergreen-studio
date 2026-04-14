@@ -3,6 +3,10 @@
 import { useState, useTransition, useEffect, useRef, useCallback } from "react";
 import { Plus } from "lucide-react";
 import { PillarCard } from "./PillarCard";
+import {
+  PillarMixAllocator,
+  type AllocatorPillar,
+} from "./PillarMixAllocator";
 import { createPillar, updatePillarShares } from "@/app/actions/strategy";
 import { cn } from "@/lib/utils";
 import { toDisplayPercents } from "@/lib/utils/shares";
@@ -32,76 +36,95 @@ export function PillarList({
   brandId: string;
   pillars: Pillar[];
 }) {
-  const [shares, setShares] = useState<Record<string, number>>(() => {
-    const m: Record<string, number> = {};
+  // Map pillars to the allocator shape, seeding locked state from a local key
+  const [allocator, setAllocator] = useState<AllocatorPillar[]>(() => {
     const pcts = toDisplayPercents(initialPillars.map((p) => p.targetShare));
-    initialPillars.forEach((p, i) => {
-      m[p.id] = pcts[i];
-    });
-    return m;
+    return initialPillars.map((p, i) => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      pct: pcts[i],
+      locked: false,
+    }));
   });
   const [newPillarName, setNewPillarName] = useState("");
   const [pending, startTransition] = useTransition();
-
-  // Sync when pillars change from server (new pillar added / deleted)
-  const pillars = initialPillars;
-  useEffect(() => {
-    setShares((prev) => {
-      const next: Record<string, number> = {};
-      // If any pillar is brand new (not in prev), use largest-remainder for the whole set.
-      // Otherwise keep user's in-flight edits.
-      const hasNewPillar = initialPillars.some((p) => !(p.id in prev));
-      if (hasNewPillar) {
-        const pcts = toDisplayPercents(initialPillars.map((p) => p.targetShare));
-        initialPillars.forEach((p, i) => {
-          next[p.id] = pcts[i];
-        });
-      } else {
-        for (const p of initialPillars) {
-          next[p.id] = prev[p.id];
-        }
-      }
-      return next;
-    });
-  }, [initialPillars]);
-  const total = Object.values(shares).reduce((s, v) => s + v, 0);
-  const balanced = Math.abs(total - 100) <= 1;
-
   const [saved, setSaved] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Auto-save when shares sum to 100% (debounced 800ms)
-  const autoSave = useCallback(
-    (nextShares: Record<string, number>) => {
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      const t = Object.values(nextShares).reduce((s, v) => s + v, 0);
-      if (Math.abs(t - 100) > 1) return;
-      if (pillars.length === 0) return;
-      saveTimer.current = setTimeout(() => {
-        const shareList = pillars.map((p) => ({
-          pillarId: p.id,
-          targetShare: (nextShares[p.id] ?? 0) / 100,
+  // Sync when pillars change from server (new pillar added / deleted / renamed / recolored)
+  useEffect(() => {
+    setAllocator((prev) => {
+      // If any pillar was added or removed, re-seed from server using largest-remainder
+      const prevIds = new Set(prev.map((p) => p.id));
+      const nextIds = new Set(initialPillars.map((p) => p.id));
+      const added = initialPillars.some((p) => !prevIds.has(p.id));
+      const removed = prev.some((p) => !nextIds.has(p.id));
+
+      if (added || removed) {
+        const pcts = toDisplayPercents(
+          initialPillars.map((p) => p.targetShare)
+        );
+        return initialPillars.map((p, i) => ({
+          id: p.id,
+          name: p.name,
+          color: p.color,
+          pct: pcts[i],
+          locked: false,
         }));
-        startTransition(() => { updatePillarShares(brandId, shareList); });
+      }
+      // Otherwise only update name/color to reflect server updates, keep user's pct edits
+      return initialPillars.map((p) => {
+        const prior = prev.find((x) => x.id === p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          color: p.color,
+          pct: prior?.pct ?? 0,
+          locked: prior?.locked ?? false,
+        };
+      });
+    });
+  }, [initialPillars]);
+
+  const total = allocator.reduce((s, p) => s + p.pct, 0);
+  const balanced = total === 100;
+
+  // Debounced auto-save when shares are balanced
+  const autoSave = useCallback(
+    (next: AllocatorPillar[]) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const t = next.reduce((s, p) => s + p.pct, 0);
+      if (t !== 100) return;
+      if (next.length === 0) return;
+      saveTimer.current = setTimeout(() => {
+        const shareList = next.map((p) => ({
+          pillarId: p.id,
+          targetShare: p.pct / 100,
+        }));
+        startTransition(() => {
+          updatePillarShares(brandId, shareList);
+        });
         setSaved(true);
         setTimeout(() => setSaved(false), 2000);
       }, 800);
     },
-    [pillars, brandId, startTransition]
+    [brandId, startTransition]
   );
 
-  function handleShareChange(pillarId: string, pct: number) {
-    const next = { ...shares, [pillarId]: Math.max(0, Math.min(100, pct)) };
-    setShares(next);
+  function handleAllocatorChange(next: AllocatorPillar[]) {
+    setAllocator(next);
     autoSave(next);
   }
 
   function saveShares() {
-    const shareList = pillars.map((p) => ({
+    const shareList = allocator.map((p) => ({
       pillarId: p.id,
-      targetShare: (shares[p.id] ?? 0) / 100,
+      targetShare: p.pct / 100,
     }));
-    startTransition(() => { updatePillarShares(brandId, shareList); });
+    startTransition(() => {
+      updatePillarShares(brandId, shareList);
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -115,85 +138,77 @@ export function PillarList({
     setNewPillarName("");
   }
 
+  // Map pillar share % back for individual PillarCard display
+  const sharesById: Record<string, number> = {};
+  for (const a of allocator) sharesById[a.id] = a.pct;
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
-          CONTENT PILLARS · TARGETS MUST SUM TO 100%
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "text-[10px] font-mono font-bold",
-              balanced ? "text-evergreen-600" : "text-red-600"
-            )}
-          >
-            {total}%
-          </span>
+    <div className="space-y-5">
+      {/* Save button bar (only shown when unbalanced) */}
+      {allocator.length > 0 && !balanced && (
+        <div className="flex items-center justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
+            Content Pillars
+          </div>
           <button
             type="button"
             onClick={saveShares}
-            disabled={!balanced || pending}
-            className={cn(
-              "rounded-lg text-xs font-semibold px-3 py-1.5 transition",
-              saved
-                ? "bg-evergreen-100 text-evergreen-700"
-                : balanced
-                ? "bg-evergreen-500 text-white hover:bg-evergreen-600"
-                : "bg-slate-line text-slate-muted cursor-not-allowed"
-            )}
+            disabled
+            className="rounded-lg text-xs font-semibold px-3 py-1.5 bg-slate-line text-slate-muted cursor-not-allowed"
           >
-            {saved ? "Saved" : pending ? "Saving…" : balanced ? "Save shares" : "Must sum to 100%"}
+            Must sum to 100%
           </button>
         </div>
-      </div>
+      )}
 
-      {/* Pillar mix bar */}
-      {pillars.length > 0 && (
-        <div className="flex h-2 rounded overflow-hidden bg-slate-bg mb-2">
-          {pillars.map((p) => {
-            const pct = shares[p.id] ?? 0;
-            if (pct <= 0) return null;
-            return (
-              <div
+      {allocator.length > 0 && balanced && (
+        <div className="flex items-center justify-between">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
+            Content Pillars
+          </div>
+          <span
+            className={cn(
+              "text-[10px] font-mono font-bold",
+              saved ? "text-evergreen-600" : "text-slate-muted"
+            )}
+          >
+            {saved ? "● Auto-saved" : pending ? "● Saving…" : "● Up to date"}
+          </span>
+        </div>
+      )}
+
+      {/* The allocator */}
+      <PillarMixAllocator
+        pillars={allocator}
+        onChange={handleAllocatorChange}
+      />
+
+      {/* Pillar cards (angles + description editing) */}
+      {initialPillars.length > 0 && (
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold mb-3">
+            Pillar details · angles, descriptions
+          </div>
+          <div className="space-y-2.5">
+            {initialPillars.map((p) => (
+              <PillarCard
                 key={p.id}
-                style={{ width: `${pct}%`, background: p.color }}
-                className="transition-all duration-300"
+                pillar={p}
+                sharePercent={sharesById[p.id] ?? 0}
+                onShareChange={(v) => {
+                  const next = allocator.map((a) =>
+                    a.id === p.id ? { ...a, pct: Math.max(0, Math.min(100, v)) } : a
+                  );
+                  handleAllocatorChange(next);
+                }}
               />
-            );
-          })}
+            ))}
+          </div>
         </div>
       )}
-
-      {/* Legend */}
-      {pillars.length > 0 && (
-        <div className="flex flex-wrap gap-3 mb-4 text-[11px] font-mono text-slate-muted">
-          {pillars.map((p) => (
-            <span key={p.id} className="inline-flex items-center gap-1.5">
-              <span
-                className="w-2 h-2 rounded-sm inline-block"
-                style={{ background: p.color }}
-              />
-              {p.name} {shares[p.id] ?? 0}%
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Pillar cards */}
-      <div className="space-y-2.5">
-        {pillars.map((p) => (
-          <PillarCard
-            key={p.id}
-            pillar={p}
-            sharePercent={shares[p.id] ?? 0}
-            onShareChange={(v) => handleShareChange(p.id, v)}
-          />
-        ))}
-      </div>
 
       {/* Add pillar */}
-      <div className="mt-3 flex gap-2">
+      <div className="flex gap-2">
         <input
           type="text"
           value={newPillarName}

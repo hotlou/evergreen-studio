@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,6 +12,8 @@ import {
   Wand2,
   ChevronDown,
   ArrowRight,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
 import {
   approvePiece,
@@ -22,6 +25,13 @@ import {
 import type { RewriteInstruction } from "@/lib/generation/rewrite";
 import { cn } from "@/lib/utils";
 
+export type ContentCardMedia = {
+  id: string;
+  url: string;
+  kind: "image" | "doc" | "video";
+  caption?: string | null;
+};
+
 export type ContentCardPiece = {
   id: string;
   pillarName: string;
@@ -31,6 +41,7 @@ export type ContentCardPiece = {
   reasonWhy: string | null;
   status: string;
   channel: string;
+  media?: ContentCardMedia[];
 };
 
 const REWRITE_OPTIONS: { label: string; instruction: RewriteInstruction }[] = [
@@ -70,12 +81,40 @@ export function ContentCard({
   >("idle");
   const [rewriteNote, setRewriteNote] = useState<string | null>(null);
 
+  const [media, setMedia] = useState<ContentCardMedia[]>(piece.media ?? []);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+
   const isApproved = piece.status === "approved";
   const channelInfo = CHANNEL_LABELS[piece.channel] ?? {
     name: piece.channel,
     suitable: [],
   };
   const charCount = displayBody.length;
+
+  async function handleGenerateImage() {
+    setImageError(null);
+    setGeneratingImage(true);
+    try {
+      const res = await fetch(`/api/content/${piece.id}/generate-image`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: "Generation failed" }));
+        throw new Error(j.error ?? "Generation failed");
+      }
+      const data = (await res.json()) as {
+        mediaAssetId: string;
+        url: string;
+      };
+      setMedia((m) => [...m, { id: data.mediaAssetId, url: data.url, kind: "image" }]);
+      router.refresh();
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Generation failed");
+    } finally {
+      setGeneratingImage(false);
+    }
+  }
 
   // After rewrite, fade the green pulse after 2.5s
   useEffect(() => {
@@ -273,6 +312,47 @@ export function ContentCard({
         )}
       </div>
 
+      {/* Media gallery */}
+      {!editing && (media.length > 0 || generatingImage) && (
+        <div className="px-5 pb-3">
+          <div className="grid grid-cols-3 gap-2">
+            {media
+              .filter((m) => m.kind === "image")
+              .map((m) => (
+                <a
+                  key={m.id}
+                  href={m.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="aspect-square rounded-lg overflow-hidden border border-slate-line hover:border-evergreen-400 transition block"
+                >
+                  <Image
+                    src={m.url}
+                    alt={m.caption ?? "Generated image"}
+                    width={240}
+                    height={240}
+                    className="w-full h-full object-cover"
+                    unoptimized
+                  />
+                </a>
+              ))}
+            {generatingImage && (
+              <div className="aspect-square rounded-lg border border-dashed border-evergreen-300 bg-evergreen-50/40 flex flex-col items-center justify-center gap-2">
+                <Loader2 className="w-5 h-5 text-evergreen-600 animate-spin" />
+                <span className="text-[10px] font-mono uppercase tracking-wider text-evergreen-700 font-bold">
+                  Generating…
+                </span>
+              </div>
+            )}
+          </div>
+          {imageError && (
+            <div className="mt-2 text-[11px] text-red-700 font-semibold">
+              {imageError}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Reason why */}
       {piece.reasonWhy && !editing && (
         <div className="px-5 pb-3">
@@ -351,6 +431,21 @@ export function ContentCard({
               </>
             )}
           </div>
+
+          <button
+            type="button"
+            onClick={handleGenerateImage}
+            disabled={pending || generatingImage}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-line px-3 py-1.5 text-xs font-semibold text-slate-muted hover:bg-slate-bg transition disabled:opacity-40"
+            title="Generate image with OpenAI"
+          >
+            {generatingImage ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <ImagePlus className="w-3 h-3" />
+            )}
+            {generatingImage ? "Imagining…" : media.length > 0 ? "Another" : "Image"}
+          </button>
 
           <div className="flex-1" />
 

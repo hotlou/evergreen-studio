@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, Pencil, Trash2, Undo2 } from "lucide-react";
+import { Check, Pencil, Trash2, Undo2, Wand2, ChevronDown } from "lucide-react";
 import {
   approvePiece,
   unapprovePiece,
   updatePieceBody,
   archivePiece,
+  rewritePieceAction,
 } from "@/app/actions/content";
+import type { RewriteInstruction } from "@/lib/generation/rewrite";
 import { cn } from "@/lib/utils";
 
 export type ContentCardPiece = {
@@ -18,14 +20,38 @@ export type ContentCardPiece = {
   body: string;
   reasonWhy: string | null;
   status: string;
+  channel: string;
+};
+
+const REWRITE_OPTIONS: { label: string; instruction: RewriteInstruction }[] = [
+  { label: "Shorten ~50%", instruction: "shorten" },
+  { label: "One-line it", instruction: "one_line" },
+  { label: "Make punchier", instruction: "punchier" },
+  { label: "Expand ~50%", instruction: "expand" },
+  { label: "Double length", instruction: "double_it" },
+];
+
+const CHANNEL_LABELS: Record<string, { name: string; suitable: string[] }> = {
+  instagram: { name: "Instagram", suitable: ["Facebook", "Threads"] },
+  tiktok: { name: "TikTok", suitable: ["Reels", "Shorts"] },
+  linkedin: { name: "LinkedIn", suitable: [] },
+  x: { name: "X", suitable: ["Threads"] },
+  facebook: { name: "Facebook", suitable: ["Instagram"] },
+  threads: { name: "Threads", suitable: ["Instagram", "X"] },
 };
 
 export function ContentCard({ piece }: { piece: ContentCardPiece }) {
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(piece.body);
   const [pending, startTransition] = useTransition();
+  const [showRewriteMenu, setShowRewriteMenu] = useState(false);
 
   const isApproved = piece.status === "approved";
+  const channelInfo = CHANNEL_LABELS[piece.channel] ?? {
+    name: piece.channel,
+    suitable: [],
+  };
+  const charCount = piece.body.length;
 
   function handleApprove() {
     startTransition(async () => {
@@ -50,6 +76,13 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
     });
   }
 
+  function handleRewrite(instruction: RewriteInstruction) {
+    setShowRewriteMenu(false);
+    startTransition(async () => {
+      await rewritePieceAction(piece.id, instruction);
+    });
+  }
+
   return (
     <div
       className={cn(
@@ -59,22 +92,41 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
           : "border-slate-line"
       )}
     >
-      {/* Header: pillar chip + angle */}
-      <div className="px-5 py-3 border-b border-slate-line flex items-center gap-2">
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white"
-          style={{ background: piece.pillarColor }}
-        >
-          {piece.pillarName}
-        </span>
-        <span className="text-xs text-slate-muted font-mono">
-          {piece.angleTitle}
-        </span>
-        {isApproved && (
-          <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-evergreen-600 uppercase tracking-wider">
-            <Check className="w-3 h-3" /> Approved
+      {/* Header: pillar chip + angle + channel meta */}
+      <div className="px-5 pt-4 pb-3 border-b border-slate-line">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
+            style={{ background: piece.pillarColor }}
+          >
+            {piece.pillarName}
           </span>
-        )}
+          <span className="text-[11px] text-slate-muted">
+            {piece.angleTitle}
+          </span>
+          {isApproved && (
+            <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold text-evergreen-600 uppercase tracking-wider">
+              <Check className="w-3 h-3" /> Approved
+            </span>
+          )}
+        </div>
+
+        {/* Channel info */}
+        <div className="flex items-center gap-3 mt-2 text-[10px] font-mono text-slate-muted">
+          <span>
+            <span className="uppercase tracking-wider font-bold">For:</span>{" "}
+            {channelInfo.name}
+          </span>
+          {channelInfo.suitable.length > 0 && (
+            <span>
+              <span className="uppercase tracking-wider font-bold">
+                Also works on:
+              </span>{" "}
+              {channelInfo.suitable.join(", ")}
+            </span>
+          )}
+          <span className="ml-auto">{charCount} chars</span>
+        </div>
       </div>
 
       {/* Body */}
@@ -130,7 +182,7 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
 
       {/* Actions */}
       {!editing && (
-        <div className="px-5 py-3 border-t border-slate-line flex items-center gap-2">
+        <div className="px-5 py-3 border-t border-slate-line flex items-center gap-2 relative">
           <button
             type="button"
             onClick={handleApprove}
@@ -152,6 +204,7 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
               </>
             )}
           </button>
+
           <button
             type="button"
             onClick={() => setEditing(true)}
@@ -160,12 +213,54 @@ export function ContentCard({ piece }: { piece: ContentCardPiece }) {
           >
             <Pencil className="w-3 h-3" /> Edit
           </button>
+
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowRewriteMenu((v) => !v)}
+              disabled={pending}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-line px-3 py-1.5 text-xs font-semibold text-slate-muted hover:bg-slate-bg transition"
+            >
+              <Wand2 className="w-3 h-3" /> Rewrite
+              <ChevronDown className="w-3 h-3" />
+            </button>
+
+            {showRewriteMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setShowRewriteMenu(false)}
+                />
+                <div className="absolute bottom-full left-0 mb-1 bg-white border border-slate-line rounded-lg shadow-lg z-20 min-w-[160px] overflow-hidden">
+                  {REWRITE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.instruction}
+                      type="button"
+                      onClick={() => handleRewrite(opt.instruction)}
+                      className="w-full text-left px-3 py-2 text-xs text-slate-ink hover:bg-evergreen-50 transition"
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           <div className="flex-1" />
+
+          {pending && (
+            <span className="text-[10px] text-slate-muted font-mono">
+              Working…
+            </span>
+          )}
+
           <button
             type="button"
             onClick={handleArchive}
             disabled={pending}
             className="inline-flex items-center gap-1 text-xs text-slate-muted hover:text-red-600 transition p-1.5"
+            title="Archive"
           >
             <Trash2 className="w-3 h-3" />
           </button>

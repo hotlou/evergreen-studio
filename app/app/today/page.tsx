@@ -34,16 +34,15 @@ export default async function TodayPage() {
   const totalShare = pillars.reduce((s, p) => s + p.targetShare, 0);
   const onTrack = Math.abs(totalShare - 1.0) <= 0.02;
 
-  // Fetch today's content pieces (generated in the last 24h, not archived)
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
+  // Fetch recent draft/approved pieces (last 7 days) so timezone doesn't hide them
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
   const pieces = await prisma.contentPiece.findMany({
     where: {
       brandId: brand.id,
       channel: "instagram",
-      status: { not: "archived" },
-      generatedAt: { gte: todayStart },
+      status: { in: ["draft", "approved"] },
+      generatedAt: { gte: sevenDaysAgo },
     },
     include: {
       pillar: { select: { name: true, color: true } },
@@ -60,6 +59,7 @@ export default async function TodayPage() {
     body: p.body,
     reasonWhy: p.reasonWhy,
     status: p.status,
+    channel: p.channel,
   }));
 
   const approvedCount = cardPieces.filter((p) => p.status === "approved").length;
@@ -143,7 +143,7 @@ export default async function TodayPage() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
-              GENERATED · {cardPieces.length} pieces
+              RECENT PIECES · {cardPieces.length} total · last 7 days
             </div>
             {approvedCount > 0 && (
               <span className="text-[10px] font-mono font-bold text-evergreen-600">

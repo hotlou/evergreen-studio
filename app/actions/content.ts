@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { rewritePiece, type RewriteInstruction } from "@/lib/generation/rewrite";
 
 async function requirePieceAccess(pieceId: string) {
   const session = await auth();
@@ -53,4 +54,16 @@ export async function archivePiece(pieceId: string) {
     data: { status: "archived" },
   });
   revalidatePath("/app/today");
+  revalidatePath("/app/library");
+}
+
+export async function rewritePieceAction(
+  pieceId: string,
+  instruction: RewriteInstruction
+) {
+  await requirePieceAccess(pieceId);
+  const result = await rewritePiece(pieceId, instruction);
+  revalidatePath("/app/today");
+  revalidatePath("/app/library");
+  return result;
 }

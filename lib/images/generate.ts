@@ -33,48 +33,68 @@ function isGptImageModel(model: string): boolean {
   return model.startsWith("gpt-image-");
 }
 
+type PromptRef =
+  | { kind: "logo"; url: string }
+  | {
+      kind: "asset";
+      url: string;
+      caption: string | null;
+      tags: string[];
+    };
+
 /**
- * Append explicit reference-usage guidance to the user's prompt so the image
- * model actually uses the attachments (logo, creative assets) instead of just
- * treating them as style hints.
+ * Append explicit per-image reference-usage guidance so the model knows what
+ * each attached file IS and how to use it. Enumerates the refs in the exact
+ * order we send them (logo first when included, then creative assets in the
+ * order they appear in the dialog).
  */
 function augmentPromptWithReferences(args: {
   prompt: string;
-  logoUrl: string | null;
-  includeLogo: boolean;
-  creativeCount: number;
+  refs: PromptRef[];
 }): string {
-  const refLines: string[] = [];
+  if (args.refs.length === 0) return args.prompt;
 
-  if (args.includeLogo && args.logoUrl) {
-    refLines.push(
-      "- Reference image #1 is the BRAND LOGO. Place it visibly in the final composition " +
-        "as a small corner lockup (top-right or bottom-right, ~8-12% of the frame), not " +
-        "dominating the hero subject. Keep the logo's original colors and proportions — " +
-        "do not recolor or redraw it. Treat it like a finished asset being composited."
-    );
-  }
-
-  if (args.creativeCount > 0) {
-    const whichStart =
-      args.includeLogo && args.logoUrl ? "The remaining" : "The attached";
-    refLines.push(
-      `- ${whichStart} reference images are BRAND CREATIVE ASSETS ` +
-        "(product shots, people whose likeness should carry through, graphics, " +
-        "or stylistic anchors). Use them as visual source material: match the " +
-        "lighting, palette, and subject identity where it makes sense. Do not " +
-        "produce a generic stock image that ignores them."
-    );
-  }
-
-  if (refLines.length === 0) return args.prompt;
-
-  return [
-    args.prompt.trim(),
+  const lines: string[] = [
+    `You are being given ${args.refs.length} reference image${
+      args.refs.length === 1 ? "" : "s"
+    } via images.edit. Each is identified below in the order attached.`,
     "",
-    "## Reference usage (CRITICAL)",
-    ...refLines,
-  ].join("\n");
+  ];
+
+  args.refs.forEach((ref, i) => {
+    const num = i + 1;
+    if (ref.kind === "logo") {
+      lines.push(
+        `### Reference image #${num} — BRAND LOGO`,
+        "- Place it visibly in the final composition as a small corner lockup " +
+          "(top-right or bottom-right, ~8-12% of the frame).",
+        "- Do not recolor, redraw, or distort the logo. Keep its original colors, " +
+          "proportions, and negative space intact.",
+        "- Treat it as a finished asset being composited — not inspiration.",
+        ""
+      );
+    } else {
+      const desc =
+        ref.caption?.trim() || ref.tags.slice(0, 4).join(", ") || "brand asset";
+      const tagStr = ref.tags.length > 0 ? ` (tags: ${ref.tags.slice(0, 6).join(", ")})` : "";
+      lines.push(
+        `### Reference image #${num} — ${desc}${tagStr}`,
+        "- Use as primary visual source material: subject identity, pose, wardrobe, " +
+          "lighting direction, and color feel should carry through.",
+        "- If this is a person, keep their likeness — do not swap faces.",
+        "- If this is a product, keep the product's shape, material, and colorway.",
+        "- If this is a graphic/mark, composite it in rather than reinterpreting it.",
+        ""
+      );
+    }
+  });
+
+  lines.push(
+    "GLOBAL RULE: the final image MUST visibly incorporate meaningful content " +
+      "from every reference above. A generic image that ignores the references is wrong."
+  );
+
+  return [args.prompt.trim(), "", "## Reference usage (CRITICAL)", ...lines].join("\n");
 }
 
 function contentTypeForFormat(fmt: ImageSettings["output_format"]): string {
@@ -118,20 +138,49 @@ export async function generateImageForPiece(
     : [];
 
   const referenceUrls: string[] = [];
+  const promptRefs: PromptRef[] = [];
   if (options.includeLogo && piece.brand.logoUrl) {
     referenceUrls.push(piece.brand.logoUrl);
+    promptRefs.push({ kind: "logo", url: piece.brand.logoUrl });
   }
-  for (const a of refAssets) referenceUrls.push(a.url);
+  // Preserve the order the user selected them in (refAssets is already in
+  // ascending createdAt; we honor the referenceAssetIds input order instead).
+  const refAssetById = new Map(refAssets.map((a) => [a.id, a]));
+  for (const id of refIds) {
+    const a = refAssetById.get(id);
+    if (!a) continue;
+    referenceUrls.push(a.url);
+    promptRefs.push({
+      kind: "asset",
+      url: a.url,
+      caption: a.caption,
+      tags: a.tags,
+    });
+  }
 
-  // Augment the prompt with explicit reference-usage instructions so the
-  // model actually incorporates the logo/assets instead of treating them
-  // as vague style inspiration.
+  // Augment the prompt with explicit per-image reference-usage instructions.
   const finalPrompt = augmentPromptWithReferences({
     prompt: options.prompt,
-    logoUrl: piece.brand.logoUrl,
-    includeLogo: Boolean(options.includeLogo && piece.brand.logoUrl),
-    creativeCount: refAssets.length,
+    refs: promptRefs,
   });
+
+  // Diagnostic: log exactly what we're about to send so Vercel function logs
+  // make it obvious whether references were included and how.
+  console.log(
+    "[image-gen]",
+    JSON.stringify({
+      pieceId: piece.id,
+      brandId: piece.brandId,
+      model: settings.model,
+      quality: settings.quality,
+      size: settings.size,
+      inputFidelity: settings.input_fidelity,
+      referencesAttached: promptRefs.length,
+      referencesKind: promptRefs.map((r) => r.kind),
+      promptLength: finalPrompt.length,
+      firstPromptChars: finalPrompt.slice(0, 200),
+    })
+  );
 
   const openai = new OpenAI();
 
@@ -146,6 +195,14 @@ export async function generateImageForPiece(
     try {
       const files = await Promise.all(
         referenceUrls.map((u, i) => fetchAsFile(u, `ref-${i}`))
+      );
+      console.log(
+        "[image-gen] images.edit path",
+        JSON.stringify({
+          fileCount: files.length,
+          fileSizes: files.map((f) => f.size),
+          fileTypes: files.map((f) => f.type),
+        })
       );
       // The OpenAI SDK accepts an array of images via the image param.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -163,8 +220,12 @@ export async function generateImageForPiece(
       const first = editResult.data?.[0];
       if (first?.b64_json) b64 = first.b64_json;
       else if (first?.url) directUrl = first.url;
+      console.log(
+        "[image-gen] images.edit OK",
+        JSON.stringify({ hasB64: !!b64, hasUrl: !!directUrl })
+      );
     } catch (err) {
-      console.warn("images.edit failed, falling back to generate:", err);
+      console.warn("[image-gen] images.edit failed, falling back to generate:", err);
     }
   }
 

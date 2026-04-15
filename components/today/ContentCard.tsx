@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,6 +12,7 @@ import {
   Wand2,
   ChevronDown,
   ArrowRight,
+  ImagePlus,
 } from "lucide-react";
 import {
   approvePiece,
@@ -18,9 +20,18 @@ import {
   updatePieceBody,
   archivePiece,
   rewritePieceAction,
+  setPieceImage,
 } from "@/app/actions/content";
 import type { RewriteInstruction } from "@/lib/generation/rewrite";
 import { cn } from "@/lib/utils";
+import { GenerateImageDialog } from "./GenerateImageDialog";
+
+export type ContentCardMedia = {
+  id: string;
+  url: string;
+  kind: "image" | "doc" | "video";
+  caption?: string | null;
+};
 
 export type ContentCardPiece = {
   id: string;
@@ -31,6 +42,7 @@ export type ContentCardPiece = {
   reasonWhy: string | null;
   status: string;
   channel: string;
+  media?: ContentCardMedia[];
 };
 
 const REWRITE_OPTIONS: { label: string; instruction: RewriteInstruction }[] = [
@@ -69,6 +81,12 @@ export function ContentCard({
     "idle" | "rewriting" | "just-rewritten" | "just-approved"
   >("idle");
   const [rewriteNote, setRewriteNote] = useState<string | null>(null);
+
+  const [media, setMedia] = useState<ContentCardMedia[]>(piece.media ?? []);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [selectingImage, setSelectingImage] = useState(false);
 
   const isApproved = piece.status === "approved";
   const channelInfo = CHANNEL_LABELS[piece.channel] ?? {
@@ -273,6 +291,119 @@ export function ContentCard({
         )}
       </div>
 
+      {/* Media gallery — click an image to select; if multiple, "Use this image" commits */}
+      {!editing && media.length > 0 && (
+        <div className="px-5 pb-3">
+          <div className="grid grid-cols-3 gap-2">
+            {media
+              .filter((m) => m.kind === "image")
+              .map((m) => {
+                const isSelected = selectedImageId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() =>
+                      setSelectedImageId((cur) => (cur === m.id ? null : m.id))
+                    }
+                    className={cn(
+                      "aspect-square rounded-lg overflow-hidden border-2 transition relative text-left",
+                      isSelected
+                        ? "border-evergreen-500 ring-2 ring-evergreen-100"
+                        : "border-slate-line hover:border-evergreen-300"
+                    )}
+                    title={
+                      isSelected
+                        ? "Selected"
+                        : "Click to select as the image for this post"
+                    }
+                  >
+                    <Image
+                      src={m.url}
+                      alt={m.caption ?? "Generated image"}
+                      width={240}
+                      height={240}
+                      className="w-full h-full object-cover"
+                      unoptimized
+                    />
+                    {isSelected && (
+                      <div className="absolute top-1 right-1 bg-evergreen-500 text-white rounded-full p-0.5 shadow">
+                        <Check className="w-3 h-3" />
+                      </div>
+                    )}
+                    <a
+                      href={m.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute bottom-1 right-1 bg-white/85 hover:bg-white text-slate-muted hover:text-slate-ink text-[9px] font-mono uppercase tracking-wider font-bold px-1.5 py-0.5 rounded shadow-sm opacity-0 hover:opacity-100 focus:opacity-100"
+                      style={{ opacity: isSelected ? 1 : undefined }}
+                    >
+                      Open
+                    </a>
+                  </button>
+                );
+              })}
+          </div>
+
+          {media.filter((m) => m.kind === "image").length > 1 && (
+            <div className="mt-2 flex items-center justify-between text-[11px]">
+              <span className="text-slate-muted">
+                {selectedImageId
+                  ? "One selected. Use it to hide the rest from this post."
+                  : "Click an image to choose which one this post uses."}
+              </span>
+              {selectedImageId && (
+                <button
+                  type="button"
+                  disabled={selectingImage}
+                  onClick={async () => {
+                    if (!selectedImageId) return;
+                    setSelectingImage(true);
+                    try {
+                      await setPieceImage(piece.id, selectedImageId);
+                      setMedia((m) =>
+                        m.filter((x) => x.id === selectedImageId)
+                      );
+                      setSelectedImageId(null);
+                      router.refresh();
+                    } finally {
+                      setSelectingImage(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-evergreen-500 hover:bg-evergreen-600 disabled:opacity-60 text-white font-semibold text-[11px] px-3 py-1.5 transition"
+                >
+                  <Check className="w-3 h-3" />
+                  {selectingImage ? "Saving…" : "Use this image"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Image generation error — always shown when present, not gated on media */}
+      {!editing && imageError && (
+        <div className="px-5 pb-3">
+          <div className="rounded-lg border border-red-100 bg-red-50 text-red-700 text-[11px] leading-relaxed px-3 py-2 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="font-bold uppercase tracking-wider text-[9px] mb-0.5">
+                Image generation failed
+              </div>
+              <div className="whitespace-pre-wrap break-words">{imageError}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImageError(null)}
+              className="text-red-600 hover:text-red-800 shrink-0"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Reason why */}
       {piece.reasonWhy && !editing && (
         <div className="px-5 pb-3">
@@ -352,6 +483,20 @@ export function ContentCard({
             )}
           </div>
 
+          <button
+            type="button"
+            onClick={() => {
+              setImageError(null);
+              setImageDialogOpen(true);
+            }}
+            disabled={pending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-line px-3 py-1.5 text-xs font-semibold text-slate-muted hover:bg-slate-bg transition disabled:opacity-40"
+            title="Prepare and generate image with OpenAI"
+          >
+            <ImagePlus className="w-3 h-3" />
+            {media.length > 0 ? "Generate another" : "Generate image"}
+          </button>
+
           <div className="flex-1" />
 
           {pending && (
@@ -370,6 +515,20 @@ export function ContentCard({
             <Trash2 className="w-3 h-3" />
           </button>
         </div>
+      )}
+
+      {imageDialogOpen && (
+        <GenerateImageDialog
+          pieceId={piece.id}
+          onClose={() => setImageDialogOpen(false)}
+          onGenerated={(result) => {
+            setMedia((m) => [
+              ...m,
+              { id: result.mediaAssetId, url: result.url, kind: "image" },
+            ]);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

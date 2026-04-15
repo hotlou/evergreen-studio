@@ -1,12 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, Check, X, Plus, Globe, Link2 } from "lucide-react";
+import { useRef, useState } from "react";
+import Image from "next/image";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  X,
+  Plus,
+  Globe,
+  Link2,
+  Upload,
+  Sparkles,
+} from "lucide-react";
 import { createBrand } from "@/app/actions/brand";
 import { cn } from "@/lib/utils";
 
 const STEPS = [
   { key: "identity", label: "Identity" },
+  { key: "logo", label: "Logo" },
   { key: "voice", label: "Voice" },
   { key: "taboos", label: "Taboos" },
   { key: "channels", label: "Channels" },
@@ -33,9 +45,13 @@ export function IntakeWizard() {
   const [referenceUrls, setReferenceUrls] = useState<string[]>([]);
   const [refUrlInput, setRefUrlInput] = useState("");
   const [voiceGuide, setVoiceGuide] = useState("");
+  const [pasteContext, setPasteContext] = useState("");
   const [taboos, setTaboos] = useState<string[]>([]);
   const [taboosInput, setTaboosInput] = useState("");
   const [channels, setChannels] = useState<string[]>(["instagram"]);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const logoInput = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const canNext = () => {
@@ -70,15 +86,25 @@ export function IntakeWizard() {
     setRefUrlInput("");
   }
 
+  function handleLogoSelect(file: File) {
+    setLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = () => setLogoPreview(String(reader.result));
+    reader.readAsDataURL(file);
+  }
+
   async function handleSubmit(formData: FormData) {
+    setSubmitting(true);
+
     formData.set("name", name);
     formData.set("primaryColor", primaryColor);
     formData.set("websiteUrl", websiteUrl);
     formData.set("referenceUrls", referenceUrls.join("\n"));
     formData.set("voiceGuide", voiceGuide);
     formData.set("taboosList", taboos.join("\n"));
+    formData.set("pasteContext", pasteContext);
+    if (logoFile) formData.set("logoFile", logoFile);
     for (const c of channels) formData.append("channels", c);
-    setSubmitting(true);
     await createBrand(formData);
   }
 
@@ -235,28 +261,114 @@ export function IntakeWizard() {
             </>
           )}
 
-          {/* Step 1: Voice */}
+          {/* Step 1: Logo */}
           {step === 1 && (
+            <>
+              <h2 className="font-display text-2xl text-slate-ink mb-1">
+                Drop in the logo
+              </h2>
+              <p className="text-sm text-slate-muted mb-6">
+                Optional. You can add or replace it on the Brand page later.
+                We&apos;ll reference the palette when generating images.
+              </p>
+
+              <input
+                ref={logoInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleLogoSelect(f);
+                  e.target.value = "";
+                }}
+              />
+
+              <div className="flex items-center gap-5">
+                <div
+                  className="w-32 h-32 rounded-xl border border-dashed border-slate-line flex items-center justify-center overflow-hidden bg-slate-bg/40"
+                >
+                  {logoPreview ? (
+                    <Image
+                      src={logoPreview}
+                      alt="Logo preview"
+                      width={128}
+                      height={128}
+                      className="w-full h-full object-contain"
+                      unoptimized
+                    />
+                  ) : (
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-slate-muted text-center px-2">
+                      No logo yet
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => logoInput.current?.click()}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-evergreen-500 hover:bg-evergreen-600 text-white font-semibold text-xs px-3 py-2 transition"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    {logoPreview ? "Replace" : "Choose file"}
+                  </button>
+                  {logoPreview && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLogoFile(null);
+                        setLogoPreview(null);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs text-slate-muted hover:text-red-600"
+                    >
+                      <X className="w-3 h-3" /> Remove
+                    </button>
+                  )}
+                  <p className="text-[11px] text-slate-muted max-w-[220px]">
+                    PNG, JPG, WebP, or SVG.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Voice */}
+          {step === 2 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">
                 How does the brand sound?
               </h2>
               <p className="text-sm text-slate-muted mb-6">
-                The voice guide every generation obeys. Be specific — adjectives,
-                examples, rules. Leave blank and AI research will draft one for you.
+                Write a voice guide, or paste anything (notes, URLs, competitor
+                copy, press quotes) — Claude will extract signals into voice,
+                taboos, and learnings after the brand is created.
               </p>
               <textarea
                 value={voiceGuide}
                 onChange={(e) => setVoiceGuide(e.target.value)}
-                rows={9}
+                rows={6}
                 placeholder="Punchy, deadpan, self-aware. Humor lands through implication. Never sycophantic, never 'wellness-coded.' If it sounds like a supplement brand, rewrite it."
-                className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100 resize-none leading-relaxed"
+                className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100 resize-none leading-relaxed mb-4"
               />
+
+              <label className="block">
+                <span className="flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-slate-muted mb-1.5 font-semibold">
+                  <Sparkles className="w-3 h-3 text-evergreen-600" /> Paste anything
+                  <span className="font-normal normal-case tracking-normal">(optional)</span>
+                </span>
+                <textarea
+                  value={pasteContext}
+                  onChange={(e) => setPasteContext(e.target.value)}
+                  rows={5}
+                  placeholder="Paste raw notes, URLs, reviews, competitor pages, voice references — anything. Claude will fold the signal into your brand after we create it."
+                  className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100 resize-none leading-relaxed font-mono"
+                />
+              </label>
             </>
           )}
 
-          {/* Step 2: Taboos */}
-          {step === 2 && (
+          {/* Step 3: Taboos */}
+          {step === 3 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">
                 Words we never generate
@@ -304,8 +416,8 @@ export function IntakeWizard() {
             </>
           )}
 
-          {/* Step 3: Channels */}
-          {step === 3 && (
+          {/* Step 4: Channels */}
+          {step === 4 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">
                 Where does this brand publish?
@@ -348,8 +460,8 @@ export function IntakeWizard() {
             </>
           )}
 
-          {/* Step 4: Review */}
-          {step === 4 && (
+          {/* Step 5: Review */}
+          {step === 5 && (
             <>
               <h2 className="font-display text-2xl text-slate-ink mb-1">Review</h2>
               <p className="text-sm text-slate-muted mb-6">
@@ -358,6 +470,21 @@ export function IntakeWizard() {
               </p>
               <div className="space-y-4 text-sm">
                 <ReviewRow label="Name" value={name} />
+                {logoPreview && (
+                  <ReviewRow
+                    label="Logo"
+                    value={
+                      <Image
+                        src={logoPreview}
+                        alt="Logo"
+                        width={56}
+                        height={56}
+                        className="w-14 h-14 object-contain rounded border border-slate-line bg-white"
+                        unoptimized
+                      />
+                    }
+                  />
+                )}
                 <ReviewRow
                   label="Website"
                   value={websiteUrl || <span className="text-slate-muted">—</span>}
@@ -394,6 +521,17 @@ export function IntakeWizard() {
                     </span>
                   }
                 />
+                {pasteContext.trim() && (
+                  <ReviewRow
+                    label="Paste"
+                    value={
+                      <span className="text-slate-muted italic line-clamp-2">
+                        {pasteContext.slice(0, 140)}
+                        {pasteContext.length > 140 ? "…" : ""} · Claude will parse after create
+                      </span>
+                    }
+                  />
+                )}
                 <ReviewRow
                   label="Taboos"
                   value={

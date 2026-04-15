@@ -9,7 +9,7 @@ import {
   Library,
   Lightbulb,
   Calendar,
-  Settings,
+  Palette,
   Archive,
 } from "lucide-react";
 import { BrandSwitcher } from "./BrandSwitcher";
@@ -41,7 +41,7 @@ export function Sidebar({
     { href: "/app/learnings", label: "Learnings", icon: Lightbulb },
     { href: "/app/archive", label: "Archive", icon: Archive },
     { href: "/app/schedule", label: "Schedule", icon: Calendar, disabled: true },
-    { href: "/app/settings", label: "Settings", icon: Settings },
+    { href: "/app/brand", label: "Brand", icon: Palette },
   ];
 
   return (

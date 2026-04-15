@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { getBrandContext } from "@/lib/brand";
 import { prisma } from "@/lib/db";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
 import { GenerateButton } from "@/components/today/GenerateButton";
 import { ContentCard, type ContentCardPiece } from "@/components/today/ContentCard";
+import { PillarMixBar, type PillarMixPillar } from "@/components/today/PillarMixBar";
 import { toDisplayPercents } from "@/lib/utils/shares";
 
 export const metadata = { title: "Today · Evergreen Studio" };
@@ -28,6 +28,9 @@ export default async function TodayPage() {
 
   const pillars = await prisma.contentPillar.findMany({
     where: { brandId: brand.id },
+    include: {
+      _count: { select: { angles: true, contentPieces: true } },
+    },
     orderBy: { sortOrder: "asc" },
   });
 
@@ -35,6 +38,33 @@ export default async function TodayPage() {
   const totalShare = pillars.reduce((s, p) => s + p.targetShare, 0);
   const onTrack = Math.abs(totalShare - 1.0) <= 0.02;
   const displayPercents = toDisplayPercents(pillars.map((p) => p.targetShare));
+
+  // Count recent pieces (last 7 days) per pillar for the detail dialog
+  const sevenDaysForPillar = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentPerPillar = await prisma.contentPiece.groupBy({
+    by: ["pillarId"],
+    where: {
+      brandId: brand.id,
+      generatedAt: { gte: sevenDaysForPillar },
+      status: { not: "archived" },
+    },
+    _count: { _all: true },
+  });
+  const recentMap = new Map<string, number>();
+  for (const row of recentPerPillar) {
+    if (row.pillarId) recentMap.set(row.pillarId, row._count._all);
+  }
+
+  const pillarMixData: PillarMixPillar[] = pillars.map((p, i) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    color: p.color,
+    targetShare: p.targetShare,
+    displayPercent: displayPercents[i],
+    angleCount: p._count.angles,
+    recentPieces: recentMap.get(p.id) ?? 0,
+  }));
 
   // Fetch recent draft/approved pieces (last 7 days) so timezone doesn't hide them
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -56,6 +86,25 @@ export default async function TodayPage() {
     orderBy: { generatedAt: "desc" },
   });
 
+  // Load media assets referenced by the pieces we're about to render
+  const allAssetIds = Array.from(
+    new Set(pieces.flatMap((p) => p.mediaAssetIds ?? []))
+  );
+  const assetMap = new Map<string, { id: string; url: string; kind: "image" | "doc" | "video"; caption: string | null }>();
+  if (allAssetIds.length > 0) {
+    const assets = await prisma.mediaAsset.findMany({
+      where: { id: { in: allAssetIds }, brandId: brand.id },
+    });
+    for (const a of assets) {
+      assetMap.set(a.id, {
+        id: a.id,
+        url: a.url,
+        kind: a.kind,
+        caption: a.caption,
+      });
+    }
+  }
+
   const cardPieces: ContentCardPiece[] = pieces.map((p) => ({
     id: p.id,
     pillarName: p.pillar?.name ?? "General",
@@ -65,6 +114,9 @@ export default async function TodayPage() {
     reasonWhy: p.reasonWhy,
     status: p.status,
     channel: p.channel,
+    media: (p.mediaAssetIds ?? [])
+      .map((id) => assetMap.get(id))
+      .filter((m): m is NonNullable<typeof m> => Boolean(m)),
   }));
 
   const approvedCount = cardPieces.filter((p) => p.status === "approved").length;
@@ -89,54 +141,11 @@ export default async function TodayPage() {
       </div>
 
       {/* Pillar mix bar */}
-      <div className="rounded-xl border border-slate-line bg-white p-4 mb-6">
-        <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-slate-muted font-bold mb-2.5">
-          <span>PILLAR MIX · TARGET</span>
-          {hasPillars && (
-            <span className={onTrack ? "text-evergreen-600" : "text-amber-600"}>
-              {onTrack ? "● Configured" : "● Shares don't sum to 100%"}
-            </span>
-          )}
-        </div>
-
-        {hasPillars ? (
-          <>
-            <div className="flex h-2 rounded overflow-hidden bg-slate-bg">
-              {pillars.map((p, i) => {
-                const pct = displayPercents[i];
-                if (pct <= 0) return null;
-                return (
-                  <div
-                    key={p.id}
-                    style={{ width: `${pct}%`, background: p.color }}
-                    className="transition-all duration-300"
-                  />
-                );
-              })}
-            </div>
-            <div className="flex flex-wrap gap-3 mt-2.5 text-[11px] font-mono text-slate-muted">
-              {pillars.map((p, i) => (
-                <span key={p.id} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="w-2 h-2 rounded-sm inline-block"
-                    style={{ background: p.color }}
-                  />
-                  {p.name} {displayPercents[i]}%
-                </span>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="text-center py-2">
-            <Link
-              href="/app/strategy"
-              className="text-xs text-evergreen-600 font-semibold hover:text-evergreen-700"
-            >
-              Set up pillars in Strategy →
-            </Link>
-          </div>
-        )}
-      </div>
+      <PillarMixBar
+        pillars={pillarMixData}
+        onTrack={onTrack}
+        hasPillars={hasPillars}
+      />
 
       {/* Generate button */}
       <div className="mb-6">

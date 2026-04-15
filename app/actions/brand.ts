@@ -8,6 +8,21 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { BRAND_COOKIE_NAME } from "@/lib/brand";
 
+async function requireBrandAccess(brandId: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Not authenticated");
+  const brand = await prisma.brand.findUnique({
+    where: { id: brandId },
+    include: { workspace: { include: { memberships: true } } },
+  });
+  if (!brand) throw new Error("Brand not found");
+  const isMember = brand.workspace.memberships.some(
+    (m) => m.userId === session.user.id
+  );
+  if (!isMember) throw new Error("Access denied");
+  return brand;
+}
+
 export async function selectBrand(brandId: string) {
   (await cookies()).set(BRAND_COOKIE_NAME, brandId, {
     path: "/",
@@ -28,6 +43,8 @@ const createBrandSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/)
     .default("#4EB35E"),
+  logoUrl: z.string().url().optional().or(z.literal("")),
+  pasteContext: z.string().max(20_000).optional(),
 });
 
 function slugify(s: string) {
@@ -44,6 +61,18 @@ export async function createBrand(formData: FormData) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Not authenticated");
 
+  const logoFile = formData.get("logoFile");
+  let logoUrl = String(formData.get("logoUrl") ?? "");
+  if (!logoUrl && logoFile instanceof File && logoFile.size > 0) {
+    const { uploadFile } = await import("@/lib/uploads");
+    try {
+      const blob = await uploadFile(logoFile, "brands/intake-logos");
+      logoUrl = blob.url;
+    } catch (err) {
+      console.error("Intake logo upload failed (non-fatal):", err);
+    }
+  }
+
   const parsed = createBrandSchema.parse({
     name: formData.get("name"),
     websiteUrl: formData.get("websiteUrl") || undefined,
@@ -58,6 +87,8 @@ export async function createBrand(formData: FormData) {
       .filter(Boolean),
     channels: formData.getAll("channels").map(String),
     primaryColor: formData.get("primaryColor") ?? undefined,
+    logoUrl: logoUrl || undefined,
+    pasteContext: formData.get("pasteContext") ?? undefined,
   });
 
   const membership = await prisma.membership.findFirst({
@@ -84,6 +115,7 @@ export async function createBrand(formData: FormData) {
       workspaceId: membership.workspaceId,
       name: parsed.name,
       slug,
+      logoUrl: parsed.logoUrl || null,
       websiteUrl: parsed.websiteUrl || null,
       referenceUrls: parsed.referenceUrls,
       voiceGuide: parsed.voiceGuide,
@@ -103,6 +135,101 @@ export async function createBrand(formData: FormData) {
     maxAge: 60 * 60 * 24 * 365,
   });
 
+  // Kick off a background signal-parse if the user pasted something meaningful.
+  // Don't block the redirect — the user gets to Today fast; signals trickle in.
+  if (parsed.pasteContext && parsed.pasteContext.trim().length > 40) {
+    (async () => {
+      try {
+        const { parseBrandSignals, mergeBrandSignals } = await import(
+          "@/lib/brand-signals"
+        );
+        const signals = await parseBrandSignals({
+          brandName: brand.name,
+          pastedText: parsed.pasteContext!,
+          existingVoice: brand.voiceGuide,
+          existingTaboos: brand.taboosList,
+        });
+        await mergeBrandSignals(brand.id, signals);
+      } catch (err) {
+        console.error("Intake paste parse failed (non-fatal):", err);
+      }
+    })();
+  }
+
   revalidatePath("/app", "layout");
   redirect("/app/today");
+}
+
+// ── Brand page editors ────────────────────────────────────────
+
+const colorTokensSchema = z.object({
+  primary: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  ink: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  background: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  highlight: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+});
+
+export async function updateColorTokens(
+  brandId: string,
+  tokens: Record<string, string>
+) {
+  await requireBrandAccess(brandId);
+  const parsed = colorTokensSchema.parse(tokens);
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { colorTokens: parsed },
+  });
+  revalidatePath("/app/brand");
+  revalidatePath("/app", "layout");
+}
+
+export async function updateChannels(brandId: string, channels: string[]) {
+  await requireBrandAccess(brandId);
+  const valid = ["instagram", "facebook", "tiktok", "linkedin", "x", "threads", "youtube", "pinterest", "email"];
+  const cleaned = channels
+    .map((c) => c.toLowerCase().trim())
+    .filter((c) => valid.includes(c));
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { channels: cleaned },
+  });
+  revalidatePath("/app/brand");
+}
+
+export async function updateImageStyles(brandId: string, styles: string[]) {
+  await requireBrandAccess(brandId);
+  const { IMAGE_STYLES } = await import("@/lib/brand/image-styles");
+  const valid = new Set(IMAGE_STYLES.map((s) => s.id));
+  const cleaned = styles
+    .map((s) => s.toLowerCase().trim())
+    .filter((s) => valid.has(s as never));
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { imageStyles: cleaned },
+  });
+  revalidatePath("/app/brand");
+  revalidatePath("/app/today");
+  revalidatePath("/app/library");
+}
+
+export async function updateBrandName(brandId: string, name: string) {
+  await requireBrandAccess(brandId);
+  const clean = name.trim().slice(0, 80);
+  if (!clean) throw new Error("Name required");
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { name: clean },
+  });
+  revalidatePath("/app", "layout");
+}
+
+export async function removeBrandLogo(brandId: string) {
+  await requireBrandAccess(brandId);
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { logoUrl: null },
+  });
+  revalidatePath("/app/brand");
+  revalidatePath("/app", "layout");
 }

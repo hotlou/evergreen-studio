@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import {
-  Sparkles,
   X,
   Settings2,
   ChevronDown,
@@ -15,6 +14,7 @@ import {
   FastForward,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RotatingStatusToast } from "./RotatingStatusToast";
 
 export type DialogCreativeAsset = {
   id: string;
@@ -439,15 +439,8 @@ export function GenerateImageDialog({
         </div>
       </div>
 
-      {/* Full-screen spinner while generating so user knows something's happening */}
-      {generating && (
-        <div className="fixed inset-0 pointer-events-none flex items-center justify-center">
-          <div className="bg-white border border-slate-line rounded-full px-4 py-2 shadow-lg inline-flex items-center gap-2 text-xs font-semibold text-evergreen-700">
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-            OpenAI is painting — this can take 30-90s.
-          </div>
-        </div>
-      )}
+      {/* Full-screen rotating status toast while generating */}
+      {generating && <RotatingStatusToast />}
     </div>
   );
 }

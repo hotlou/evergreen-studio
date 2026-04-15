@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { generateContentPack } from "@/lib/generation/pipeline";
+import {
+  generateContentPack,
+  MalformedToolInputError,
+} from "@/lib/generation/pipeline";
 
 export async function POST(req: Request) {
   const session = await auth();
@@ -46,6 +49,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ pieces });
   } catch (err) {
     console.error("Generation pipeline error:", err);
+    // Keep the dev-facing detail in the log above; surface a friendly
+    // message for the known cold-cache hiccup so the UI doesn't show
+    // raw "Claude returned pieces as a malformed string" wording.
+    if (err instanceof MalformedToolInputError) {
+      return NextResponse.json(
+        {
+          error:
+            "Generation hiccupped on this brand's first run. Click Generate again — this almost always resolves on retry.",
+        },
+        { status: 503 }
+      );
+    }
     const message = err instanceof Error ? err.message : "Generation failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }

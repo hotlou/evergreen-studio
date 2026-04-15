@@ -196,7 +196,13 @@ export function GenerateImageDialog({
           </div>
         </div>
 
-        <div className="px-5 py-4 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div
+          className={cn(
+            "px-5 py-4 space-y-5 max-h-[75vh] overflow-y-auto transition-opacity",
+            generating && "opacity-50 pointer-events-none select-none"
+          )}
+          aria-hidden={generating}
+        >
           {loadError && (
             <div className="rounded-lg border border-red-100 bg-red-50 text-red-700 text-xs px-3 py-2">
               {loadError}

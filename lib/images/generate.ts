@@ -20,14 +20,62 @@ export type GeneratedImage = {
 };
 
 const DEFAULT_SETTINGS: ImageSettings = {
-  model: "gpt-image-1",
-  quality: "high",
+  model: "gpt-image-1.5",
+  quality: "auto",
   size: "1024x1024",
   background: "auto",
   output_format: "png",
   input_fidelity: "high",
   n: 1,
 };
+
+function isGptImageModel(model: string): boolean {
+  return model.startsWith("gpt-image-");
+}
+
+/**
+ * Append explicit reference-usage guidance to the user's prompt so the image
+ * model actually uses the attachments (logo, creative assets) instead of just
+ * treating them as style hints.
+ */
+function augmentPromptWithReferences(args: {
+  prompt: string;
+  logoUrl: string | null;
+  includeLogo: boolean;
+  creativeCount: number;
+}): string {
+  const refLines: string[] = [];
+
+  if (args.includeLogo && args.logoUrl) {
+    refLines.push(
+      "- Reference image #1 is the BRAND LOGO. Place it visibly in the final composition " +
+        "as a small corner lockup (top-right or bottom-right, ~8-12% of the frame), not " +
+        "dominating the hero subject. Keep the logo's original colors and proportions — " +
+        "do not recolor or redraw it. Treat it like a finished asset being composited."
+    );
+  }
+
+  if (args.creativeCount > 0) {
+    const whichStart =
+      args.includeLogo && args.logoUrl ? "The remaining" : "The attached";
+    refLines.push(
+      `- ${whichStart} reference images are BRAND CREATIVE ASSETS ` +
+        "(product shots, people whose likeness should carry through, graphics, " +
+        "or stylistic anchors). Use them as visual source material: match the " +
+        "lighting, palette, and subject identity where it makes sense. Do not " +
+        "produce a generic stock image that ignores them."
+    );
+  }
+
+  if (refLines.length === 0) return args.prompt;
+
+  return [
+    args.prompt.trim(),
+    "",
+    "## Reference usage (CRITICAL)",
+    ...refLines,
+  ].join("\n");
+}
 
 function contentTypeForFormat(fmt: ImageSettings["output_format"]): string {
   if (fmt === "png") return "image/png";
@@ -75,6 +123,16 @@ export async function generateImageForPiece(
   }
   for (const a of refAssets) referenceUrls.push(a.url);
 
+  // Augment the prompt with explicit reference-usage instructions so the
+  // model actually incorporates the logo/assets instead of treating them
+  // as vague style inspiration.
+  const finalPrompt = augmentPromptWithReferences({
+    prompt: options.prompt,
+    logoUrl: piece.brand.logoUrl,
+    includeLogo: Boolean(options.includeLogo && piece.brand.logoUrl),
+    creativeCount: refAssets.length,
+  });
+
   const openai = new OpenAI();
 
   let b64: string | null = null;
@@ -83,8 +141,8 @@ export async function generateImageForPiece(
 
   const outputType = contentTypeForFormat(settings.output_format);
 
-  // ── Path A: edit with references (gpt-image-1 supports multi-image input) ──
-  if (referenceUrls.length > 0 && settings.model === "gpt-image-1") {
+  // ── Path A: edit with references (any gpt-image-* model supports this) ──
+  if (referenceUrls.length > 0 && isGptImageModel(settings.model)) {
     try {
       const files = await Promise.all(
         referenceUrls.map((u, i) => fetchAsFile(u, `ref-${i}`))
@@ -92,8 +150,8 @@ export async function generateImageForPiece(
       // The OpenAI SDK accepts an array of images via the image param.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const editResult = await (openai.images.edit as any)({
-        model: "gpt-image-1",
-        prompt: options.prompt,
+        model: settings.model,
+        prompt: finalPrompt,
         image: files,
         n: settings.n,
         size: settings.size === "auto" ? undefined : settings.size,
@@ -116,11 +174,11 @@ export async function generateImageForPiece(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const genArgs: any = {
         model: settings.model,
-        prompt: options.prompt,
+        prompt: finalPrompt,
         n: settings.n,
         size: settings.size === "auto" ? undefined : settings.size,
       };
-      if (settings.model === "gpt-image-1") {
+      if (isGptImageModel(settings.model)) {
         genArgs.quality = settings.quality;
         genArgs.output_format = settings.output_format;
         genArgs.background = settings.background;
@@ -134,7 +192,7 @@ export async function generateImageForPiece(
       usedModel = "dall-e-3";
       const result = await openai.images.generate({
         model: "dall-e-3",
-        prompt: options.prompt,
+        prompt: finalPrompt,
         size: "1024x1024",
         n: 1,
       });

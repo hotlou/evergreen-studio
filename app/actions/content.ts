@@ -80,3 +80,21 @@ export async function rewritePieceAction(
   revalidatePath("/app/library");
   return result;
 }
+
+/**
+ * Pick a single image as THE image for this piece.
+ * Other images previously attached to the piece stay as MediaAsset rows
+ * (visible in Library → Generated), they're just detached from the piece.
+ */
+export async function setPieceImage(pieceId: string, mediaAssetId: string) {
+  const piece = await requirePieceAccess(pieceId);
+  if (!piece.mediaAssetIds.includes(mediaAssetId)) {
+    throw new Error("Asset is not attached to this piece");
+  }
+  await prisma.contentPiece.update({
+    where: { id: pieceId },
+    data: { mediaAssetIds: { set: [mediaAssetId] } },
+  });
+  revalidatePath("/app/today");
+  revalidatePath("/app/library");
+}

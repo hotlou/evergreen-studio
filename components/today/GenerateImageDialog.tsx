@@ -12,6 +12,7 @@ import {
   Loader2,
   ImagePlus,
   Info,
+  FastForward,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -164,8 +165,8 @@ export function GenerateImageDialog({
         className="w-full max-w-3xl rounded-2xl border border-slate-line bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-line">
-          <div>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-line gap-3">
+          <div className="min-w-0">
             <div className="font-mono text-[10px] uppercase tracking-widest text-slate-muted font-bold">
               IMAGE · PREP & GENERATE
             </div>
@@ -173,13 +174,26 @@ export function GenerateImageDialog({
               Prepare image for this post
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-slate-muted hover:text-slate-ink p-1 rounded"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={runGenerate}
+              disabled={!prep || generating || prompt.trim().length < 10}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-line text-slate-muted hover:text-evergreen-700 hover:border-evergreen-300 disabled:opacity-40 text-[11px] font-semibold px-2.5 py-1.5 transition"
+              title="Skip editing and generate with the drafted prompt + suggested refs"
+            >
+              <FastForward className="w-3 h-3" />
+              Skip — generate now
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-muted hover:text-slate-ink p-1 rounded"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="px-5 py-4 space-y-5 max-h-[75vh] overflow-y-auto">

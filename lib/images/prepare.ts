@@ -25,8 +25,10 @@ function sizeForChannel(channel: string): ImageSize {
 // ── Image settings (dev-visible) ──
 
 export const imageSettingsSchema = z.object({
-  model: z.enum(["gpt-image-1", "dall-e-3"]).default("gpt-image-1"),
-  quality: z.enum(["low", "medium", "high", "auto"]).default("high"),
+  model: z
+    .enum(["gpt-image-1.5", "gpt-image-1", "dall-e-3"])
+    .default("gpt-image-1.5"),
+  quality: z.enum(["low", "medium", "high", "auto"]).default("auto"),
   size: z
     .enum(["1024x1024", "1536x1024", "1024x1536", "auto"])
     .default("1024x1024"),

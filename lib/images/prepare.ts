@@ -2,6 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { Tool } from "@anthropic-ai/sdk/resources/messages";
 import { prisma } from "@/lib/db";
+import {
+  buildStylePromptFragment,
+  getImageStyles,
+} from "@/lib/brand/image-styles";
 
 // ── Channel aspect preferences ──
 
@@ -183,6 +187,7 @@ function fallbackPrompt(args: {
   angleTitle: string | null;
   captionBody: string;
   channel: string;
+  styleFragment: string;
 }): string {
   return [
     `A single editorial social image for "${args.brandName}"`,
@@ -193,6 +198,8 @@ function fallbackPrompt(args: {
     `## Channel fit`,
     channelSuitabilityLine(args.channel),
     "",
+    args.styleFragment ? args.styleFragment : "",
+    args.styleFragment ? "" : "",
     "## Caption it must illustrate",
     args.captionBody.slice(0, 900),
     "",
@@ -201,7 +208,6 @@ function fallbackPrompt(args: {
     "",
     "## Visual direction",
     `- Anchor the palette around ${args.primaryColor} (primary brand color).`,
-    "- Photographic or tasteful editorial illustration — never AI-looking slop.",
     "- No baked-in fake brand names, watermarks, or logos from other brands.",
     "- Leave a focal dead-zone in the composition where a headline or logo can be layered on top.",
     "- Lighting should feel intentional (directional, natural, dramatic) — never flat stock-photo lighting.",
@@ -224,6 +230,9 @@ export async function prepareImageGeneration(
     (piece.brand.colorTokens as { primary?: string } | null)?.primary ??
     piece.pillar?.color ??
     "#4EB35E";
+
+  const selectedStyles = getImageStyles(piece.brand.imageStyles ?? []);
+  const styleFragment = buildStylePromptFragment(piece.brand.imageStyles ?? []);
 
   // Pull all creative assets for this brand
   const assetRows = await prisma.mediaAsset.findMany({
@@ -261,6 +270,15 @@ export async function prepareImageGeneration(
         "for Instagram, also suitable for Facebook and Threads.' Use the",
         "channel suitability line provided in the user message verbatim.",
         "",
+        selectedStyles.length > 0
+          ? "The brand has locked in one or more visual styles (see '## Visual " +
+            "style' below). Your prompt MUST obey the style block verbatim — " +
+            "include it in your output prompt. Do not default to illustration " +
+            "if the style says photography, and vice versa."
+          : "No visual style is locked for this brand. Default to photography " +
+            "or editorial photo unless the caption strongly implies otherwise " +
+            "— never default to generic AI illustration.",
+        "",
         "If the caption implies overlay text or requires photorealistic quality",
         "(product shots, people, editorial scenes), say so explicitly in the",
         "prompt — the generator uses that signal to allocate quality.",
@@ -278,6 +296,8 @@ export async function prepareImageGeneration(
         piece.pillar ? `Pillar: ${piece.pillar.name} (${piece.pillar.color})` : "",
         piece.angle ? `Angle: ${piece.angle.title}` : "",
         "",
+        styleFragment ? styleFragment : "",
+        styleFragment ? "" : "",
         "## Voice guide",
         piece.brand.voiceGuide?.slice(0, 1500) || "(none)",
         "",
@@ -350,10 +370,16 @@ export async function prepareImageGeneration(
       angleTitle: piece.angle?.title ?? null,
       captionBody: piece.body,
       channel: piece.channel,
+      styleFragment,
     });
   const primaryDisplay = channelDisplayName(piece.channel);
   if (!finalPrompt.toLowerCase().includes(primaryDisplay.toLowerCase())) {
     finalPrompt = `${finalPrompt.trim()}\n\n## Channel fit\n${suitabilityLine}`;
+  }
+  // Belt-and-suspenders: if styles are locked and Claude didn't include the
+  // style fragment, append it so the generator never falls back to illustration.
+  if (styleFragment && !finalPrompt.includes("## Visual style")) {
+    finalPrompt = `${finalPrompt.trim()}\n\n${styleFragment}`;
   }
 
   return {

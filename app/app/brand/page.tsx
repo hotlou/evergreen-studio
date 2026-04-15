@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
 import { LogoUploader } from "@/components/brand/LogoUploader";
 import { ColorTokensEditor } from "@/components/brand/ColorTokensEditor";
+import { ImageStylePills } from "@/components/brand/ImageStylePills";
 import { PasteAnythingPanel } from "@/components/brand/PasteAnythingPanel";
 import { ChannelsEditor } from "@/components/brand/ChannelsEditor";
 import {
@@ -87,6 +88,10 @@ export default async function BrandPage() {
 
       <div className="mb-4">
         <ColorTokensEditor brandId={brand.id} initial={initialTokens} />
+      </div>
+
+      <div className="mb-4">
+        <ImageStylePills brandId={brand.id} initial={brand.imageStyles} />
       </div>
 
       <div className="mb-4">

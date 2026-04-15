@@ -111,6 +111,10 @@ model Brand {
   taboosList  String[] @default([])
   channels    String[] @default([]) // ["instagram", ...]
 
+  // Preferred visual styles for AI-generated imagery. See lib/brand/image-styles.ts
+  // for the catalog. Empty = no style constraint; the planner picks freely.
+  imageStyles String[] @default([])
+
   // Brand research inputs — used by M2 smart onboarding
   websiteUrl    String?
   referenceUrls String[] @default([]) // news articles, third-party info, etc.

@@ -197,6 +197,22 @@ export async function updateChannels(brandId: string, channels: string[]) {
   revalidatePath("/app/brand");
 }
 
+export async function updateImageStyles(brandId: string, styles: string[]) {
+  await requireBrandAccess(brandId);
+  const { IMAGE_STYLES } = await import("@/lib/brand/image-styles");
+  const valid = new Set(IMAGE_STYLES.map((s) => s.id));
+  const cleaned = styles
+    .map((s) => s.toLowerCase().trim())
+    .filter((s) => valid.has(s as never));
+  await prisma.brand.update({
+    where: { id: brandId },
+    data: { imageStyles: cleaned },
+  });
+  revalidatePath("/app/brand");
+  revalidatePath("/app/today");
+  revalidatePath("/app/library");
+}
+
 export async function updateBrandName(brandId: string, name: string) {
   await requireBrandAccess(brandId);
   const clean = name.trim().slice(0, 80);

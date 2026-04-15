@@ -1,118 +1,147 @@
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
+import type { ImageSettings } from "./prepare";
+
+export type GenerateOptions = {
+  prompt: string;
+  referenceAssetIds?: string[];
+  includeLogo?: boolean;
+  settings?: Partial<ImageSettings>;
+};
 
 export type GeneratedImage = {
   mediaAssetId: string;
   url: string;
   prompt: string;
+  settingsUsed: ImageSettings;
+  modelUsed: string;
+  referencesUsed: string[];
 };
 
-const DEFAULT_MODEL = "gpt-image-1";
-const FALLBACK_MODEL = "dall-e-3";
+const DEFAULT_SETTINGS: ImageSettings = {
+  model: "gpt-image-1",
+  quality: "high",
+  size: "1024x1024",
+  background: "auto",
+  output_format: "png",
+  input_fidelity: "high",
+  n: 1,
+};
 
-/**
- * Build an image-generation prompt from the ContentPiece + Brand context.
- * We lean on the caption body, pillar, voice, and any brand color cues.
- */
-function buildImagePrompt(args: {
-  brandName: string;
-  voiceGuide: string | null;
-  colorTokens: Record<string, unknown> | null;
-  pillarName: string | null;
-  pillarColor: string | null;
-  angleTitle: string | null;
-  captionBody: string;
-  logoUrl?: string | null;
-}): string {
-  const primary =
-    (args.colorTokens as { primary?: string } | null)?.primary ??
-    args.pillarColor ??
-    "#4EB35E";
+function contentTypeForFormat(fmt: ImageSettings["output_format"]): string {
+  if (fmt === "png") return "image/png";
+  if (fmt === "jpeg") return "image/jpeg";
+  return "image/webp";
+}
 
-  const parts = [
-    `Generate a single social media image for "${args.brandName}"`,
-    args.pillarName ? `in the content pillar "${args.pillarName}"` : "",
-    args.angleTitle ? `about "${args.angleTitle}"` : "",
-    ".",
-    "",
-    "## Caption it must illustrate:",
-    args.captionBody.slice(0, 1000),
-    "",
-    "## Brand voice & tone",
-    args.voiceGuide?.slice(0, 800) || "Clean, modern, confident.",
-    "",
-    "## Visual direction",
-    `- Anchor the palette around ${primary} (primary brand color).`,
-    "- Square composition, 1:1, suited to Instagram feed.",
-    "- Photographic or editorial illustration — never AI-looking slop.",
-    "- No on-image text, no watermarks, no logos.",
-    "- Leave breathing room at the top & bottom for overlay text.",
-  ];
-
-  if (args.logoUrl) {
-    parts.push(
-      "",
-      "The brand's logo exists but must NOT appear in the image. The art should feel " +
-        "like it belongs to the same visual world as the logo (consistent palette & energy)."
-    );
+async function fetchAsFile(url: string, fallbackName: string): Promise<File> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch reference image ${url}: ${res.status}`);
   }
-
-  return parts.filter(Boolean).join("\n");
+  const ab = await res.arrayBuffer();
+  const contentType = res.headers.get("content-type") ?? "image/png";
+  const ext = contentType.split("/")[1]?.split(";")[0] ?? "png";
+  const buf = Buffer.from(ab);
+  return await toFile(buf, `${fallbackName}.${ext}`, { type: contentType });
 }
 
 export async function generateImageForPiece(
-  pieceId: string
+  pieceId: string,
+  options: GenerateOptions
 ): Promise<GeneratedImage> {
   const piece = await prisma.contentPiece.findUniqueOrThrow({
     where: { id: pieceId },
-    include: {
-      brand: true,
-      pillar: true,
-      angle: true,
-    },
+    include: { brand: true, pillar: true, angle: true },
   });
 
-  const prompt = buildImagePrompt({
-    brandName: piece.brand.name,
-    voiceGuide: piece.brand.voiceGuide,
-    colorTokens: piece.brand.colorTokens as Record<string, unknown> | null,
-    pillarName: piece.pillar?.name ?? null,
-    pillarColor: piece.pillar?.color ?? null,
-    angleTitle: piece.angle?.title ?? null,
-    captionBody: piece.body,
-    logoUrl: piece.brand.logoUrl,
-  });
+  const settings: ImageSettings = {
+    ...DEFAULT_SETTINGS,
+    ...(options.settings ?? {}),
+  };
+
+  // Resolve reference images — brand logo (optional) + selected creative assets
+  const refIds = options.referenceAssetIds ?? [];
+  const refAssets = refIds.length
+    ? await prisma.mediaAsset.findMany({
+        where: { id: { in: refIds }, brandId: piece.brandId, kind: "image" },
+      })
+    : [];
+
+  const referenceUrls: string[] = [];
+  if (options.includeLogo && piece.brand.logoUrl) {
+    referenceUrls.push(piece.brand.logoUrl);
+  }
+  for (const a of refAssets) referenceUrls.push(a.url);
 
   const openai = new OpenAI();
 
   let b64: string | null = null;
   let directUrl: string | null = null;
-  let usedModel = DEFAULT_MODEL;
+  let usedModel: string = settings.model;
 
-  try {
-    const result = await openai.images.generate({
-      model: DEFAULT_MODEL,
-      prompt,
-      size: "1024x1024",
-      n: 1,
-    });
-    const first = result.data?.[0];
-    if (first?.b64_json) b64 = first.b64_json;
-    else if (first?.url) directUrl = first.url;
-  } catch (err) {
-    // Fall back to DALL·E 3 if gpt-image-1 isn't available for this account
-    console.warn("gpt-image-1 failed, falling back to dall-e-3:", err);
-    usedModel = FALLBACK_MODEL;
-    const result = await openai.images.generate({
-      model: FALLBACK_MODEL,
-      prompt,
-      size: "1024x1024",
-      n: 1,
-    });
-    const first = result.data?.[0];
-    if (first?.url) directUrl = first.url;
-    else if (first?.b64_json) b64 = first.b64_json;
+  const outputType = contentTypeForFormat(settings.output_format);
+
+  // ── Path A: edit with references (gpt-image-1 supports multi-image input) ──
+  if (referenceUrls.length > 0 && settings.model === "gpt-image-1") {
+    try {
+      const files = await Promise.all(
+        referenceUrls.map((u, i) => fetchAsFile(u, `ref-${i}`))
+      );
+      // The OpenAI SDK accepts an array of images via the image param.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const editResult = await (openai.images.edit as any)({
+        model: "gpt-image-1",
+        prompt: options.prompt,
+        image: files,
+        n: settings.n,
+        size: settings.size === "auto" ? undefined : settings.size,
+        quality: settings.quality,
+        input_fidelity: settings.input_fidelity,
+        output_format: settings.output_format,
+        background: settings.background,
+      });
+      const first = editResult.data?.[0];
+      if (first?.b64_json) b64 = first.b64_json;
+      else if (first?.url) directUrl = first.url;
+    } catch (err) {
+      console.warn("images.edit failed, falling back to generate:", err);
+    }
+  }
+
+  // ── Path B: plain generate ──
+  if (!b64 && !directUrl) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const genArgs: any = {
+        model: settings.model,
+        prompt: options.prompt,
+        n: settings.n,
+        size: settings.size === "auto" ? undefined : settings.size,
+      };
+      if (settings.model === "gpt-image-1") {
+        genArgs.quality = settings.quality;
+        genArgs.output_format = settings.output_format;
+        genArgs.background = settings.background;
+      }
+      const result = await openai.images.generate(genArgs);
+      const first = result.data?.[0];
+      if (first?.b64_json) b64 = first.b64_json;
+      else if (first?.url) directUrl = first.url;
+    } catch (err) {
+      console.warn(`${settings.model} failed, falling back to dall-e-3:`, err);
+      usedModel = "dall-e-3";
+      const result = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: options.prompt,
+        size: "1024x1024",
+        n: 1,
+      });
+      const first = result.data?.[0];
+      if (first?.url) directUrl = first.url;
+      else if (first?.b64_json) b64 = first.b64_json;
+    }
   }
 
   let buffer: Buffer;
@@ -127,11 +156,12 @@ export async function generateImageForPiece(
     throw new Error("Image generation returned no image");
   }
 
-  const pathname = `brands/${piece.brandId}/generated/${Date.now()}-${piece.id}.png`;
+  const extension = settings.output_format;
+  const pathname = `brands/${piece.brandId}/generated/${Date.now()}-${piece.id}.${extension}`;
   const blob = await put(pathname, buffer, {
     access: "public",
     addRandomSuffix: true,
-    contentType: "image/png",
+    contentType: outputType,
   });
 
   const created = await prisma.$transaction(async (tx) => {
@@ -144,6 +174,7 @@ export async function generateImageForPiece(
         caption: piece.body.slice(0, 200),
         tags: [
           usedModel,
+          settings.quality,
           piece.pillar?.name.toLowerCase() ?? "",
           piece.angle?.title.toLowerCase() ?? "",
         ].filter(Boolean),
@@ -162,5 +193,12 @@ export async function generateImageForPiece(
     return asset;
   });
 
-  return { mediaAssetId: created.id, url: created.url, prompt };
+  return {
+    mediaAssetId: created.id,
+    url: created.url,
+    prompt: options.prompt,
+    settingsUsed: settings,
+    modelUsed: usedModel,
+    referencesUsed: referenceUrls,
+  };
 }

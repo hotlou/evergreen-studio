@@ -13,7 +13,6 @@ import {
   ChevronDown,
   ArrowRight,
   ImagePlus,
-  Loader2,
 } from "lucide-react";
 import {
   approvePiece,
@@ -24,6 +23,7 @@ import {
 } from "@/app/actions/content";
 import type { RewriteInstruction } from "@/lib/generation/rewrite";
 import { cn } from "@/lib/utils";
+import { GenerateImageDialog } from "./GenerateImageDialog";
 
 export type ContentCardMedia = {
   id: string;
@@ -82,8 +82,8 @@ export function ContentCard({
   const [rewriteNote, setRewriteNote] = useState<string | null>(null);
 
   const [media, setMedia] = useState<ContentCardMedia[]>(piece.media ?? []);
-  const [generatingImage, setGeneratingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
 
   const isApproved = piece.status === "approved";
   const channelInfo = CHANNEL_LABELS[piece.channel] ?? {
@@ -91,30 +91,6 @@ export function ContentCard({
     suitable: [],
   };
   const charCount = displayBody.length;
-
-  async function handleGenerateImage() {
-    setImageError(null);
-    setGeneratingImage(true);
-    try {
-      const res = await fetch(`/api/content/${piece.id}/generate-image`, {
-        method: "POST",
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({ error: "Generation failed" }));
-        throw new Error(j.error ?? "Generation failed");
-      }
-      const data = (await res.json()) as {
-        mediaAssetId: string;
-        url: string;
-      };
-      setMedia((m) => [...m, { id: data.mediaAssetId, url: data.url, kind: "image" }]);
-      router.refresh();
-    } catch (err) {
-      setImageError(err instanceof Error ? err.message : "Generation failed");
-    } finally {
-      setGeneratingImage(false);
-    }
-  }
 
   // After rewrite, fade the green pulse after 2.5s
   useEffect(() => {
@@ -313,7 +289,7 @@ export function ContentCard({
       </div>
 
       {/* Media gallery */}
-      {!editing && (media.length > 0 || generatingImage) && (
+      {!editing && media.length > 0 && (
         <div className="px-5 pb-3">
           <div className="grid grid-cols-3 gap-2">
             {media
@@ -336,14 +312,6 @@ export function ContentCard({
                   />
                 </a>
               ))}
-            {generatingImage && (
-              <div className="aspect-square rounded-lg border border-dashed border-evergreen-300 bg-evergreen-50/40 flex flex-col items-center justify-center gap-2">
-                <Loader2 className="w-5 h-5 text-evergreen-600 animate-spin" />
-                <span className="text-[10px] font-mono uppercase tracking-wider text-evergreen-700 font-bold">
-                  Generating…
-                </span>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -451,21 +419,16 @@ export function ContentCard({
 
           <button
             type="button"
-            onClick={handleGenerateImage}
-            disabled={pending || generatingImage}
+            onClick={() => {
+              setImageError(null);
+              setImageDialogOpen(true);
+            }}
+            disabled={pending}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-line px-3 py-1.5 text-xs font-semibold text-slate-muted hover:bg-slate-bg transition disabled:opacity-40"
-            title="Generate image with OpenAI"
+            title="Prepare and generate image with OpenAI"
           >
-            {generatingImage ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <ImagePlus className="w-3 h-3" />
-            )}
-            {generatingImage
-              ? "Generating…"
-              : media.length > 0
-              ? "Generate another"
-              : "Generate image"}
+            <ImagePlus className="w-3 h-3" />
+            {media.length > 0 ? "Generate another" : "Generate image"}
           </button>
 
           <div className="flex-1" />
@@ -486,6 +449,20 @@ export function ContentCard({
             <Trash2 className="w-3 h-3" />
           </button>
         </div>
+      )}
+
+      {imageDialogOpen && (
+        <GenerateImageDialog
+          pieceId={piece.id}
+          onClose={() => setImageDialogOpen(false)}
+          onGenerated={(result) => {
+            setMedia((m) => [
+              ...m,
+              { id: result.mediaAssetId, url: result.url, kind: "image" },
+            ]);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

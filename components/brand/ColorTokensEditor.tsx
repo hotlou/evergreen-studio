@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, Pencil, Upload, Sparkles, X } from "lucide-react";
 import { updateColorTokens } from "@/app/actions/brand";
 
@@ -155,17 +155,7 @@ export function ColorTokensEditor({
               </>
             )}
           </button>
-          {editing ? (
-            <button
-              type="button"
-              onClick={save}
-              disabled={pending}
-              className="inline-flex items-center gap-1 text-xs text-evergreen-600 font-semibold hover:text-evergreen-700"
-            >
-              <Check className="w-3.5 h-3.5" />
-              {pending ? "Saving…" : "Save"}
-            </button>
-          ) : (
+          {!editing && (
             <button
               type="button"
               onClick={() => setEditing(true)}
@@ -238,6 +228,36 @@ export function ColorTokensEditor({
           );
         })}
       </div>
+
+      {editing && (
+        <div className="sticky bottom-0 mt-4 -mx-5 -mb-5 px-5 py-3 bg-white border-t border-slate-line flex items-center justify-between rounded-b-xl">
+          <span className="text-[11px] text-slate-muted">
+            Unsaved changes — Save to apply across the app.
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTokens(initial);
+                setEditing(false);
+              }}
+              disabled={pending}
+              className="rounded-lg border border-slate-line text-slate-muted hover:bg-slate-bg text-xs font-semibold px-3 py-2 transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={pending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-evergreen-500 hover:bg-evergreen-600 disabled:opacity-60 text-white font-semibold text-xs px-4 py-2 transition"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {pending ? "Saving…" : "Save colors"}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -252,6 +272,7 @@ function ExtractedPreview({
   onClose: () => void;
 }) {
   const [openFor, setOpenFor] = useState<string | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
   const tokenKeys: (keyof Tokens)[] = [
     "primary",
     "ink",
@@ -259,6 +280,29 @@ function ExtractedPreview({
     "background",
     "highlight",
   ];
+
+  useEffect(() => {
+    if (!openFor) return;
+    function handle(e: MouseEvent) {
+      const node = popoverRef.current;
+      if (node && !node.contains(e.target as Node)) {
+        setOpenFor(null);
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenFor(null);
+    }
+    // Attach on next tick so the click that opened it doesn't immediately close it
+    const t = setTimeout(() => {
+      document.addEventListener("mousedown", handle);
+      document.addEventListener("keydown", handleKey);
+    }, 0);
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("mousedown", handle);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [openFor]);
 
   return (
     <div className="mb-4 rounded-xl border border-evergreen-200 bg-evergreen-50/40 p-3">
@@ -317,6 +361,7 @@ function ExtractedPreview({
                   </button>
                   {openFor === c && (
                     <div
+                      ref={popoverRef}
                       className="absolute top-full left-0 mt-1 bg-white border border-slate-line rounded-lg shadow-lg z-20 min-w-[140px] overflow-hidden"
                     >
                       <div className="px-2.5 py-1 text-[9px] font-mono uppercase tracking-wider text-slate-muted font-bold border-b border-slate-line">

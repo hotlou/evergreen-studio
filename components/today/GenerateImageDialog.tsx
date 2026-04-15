@@ -26,7 +26,7 @@ export type DialogCreativeAsset = {
 };
 
 export type ImageSettings = {
-  model: "gpt-image-1" | "dall-e-3";
+  model: "gpt-image-1.5" | "gpt-image-1" | "dall-e-3";
   quality: "low" | "medium" | "high" | "auto";
   size: "1024x1024" | "1536x1024" | "1024x1536" | "auto";
   background: "auto" | "transparent" | "opaque";
@@ -179,7 +179,7 @@ export function GenerateImageDialog({
               type="button"
               onClick={runGenerate}
               disabled={!prep || generating || prompt.trim().length < 10}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-line text-slate-muted hover:text-evergreen-700 hover:border-evergreen-300 disabled:opacity-40 text-[11px] font-semibold px-2.5 py-1.5 transition"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-line bg-white text-slate-muted hover:text-white hover:bg-evergreen-600 hover:border-evergreen-600 hover:shadow-sm disabled:opacity-40 text-[11px] font-semibold px-2.5 py-1.5 transition"
               title="Skip editing and generate with the drafted prompt + suggested refs"
             >
               <FastForward className="w-3 h-3" />
@@ -472,7 +472,7 @@ function SettingsPanel({
         label="Model"
         value={settings.model}
         onChange={(v) => set("model", v as ImageSettings["model"])}
-        options={["gpt-image-1", "dall-e-3"]}
+        options={["gpt-image-1.5", "gpt-image-1", "dall-e-3"]}
       />
       <SelectField
         label="Quality"

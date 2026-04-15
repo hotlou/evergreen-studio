@@ -22,13 +22,43 @@ function sizeForChannel(channel: string): ImageSize {
   return CHANNEL_SIZE[channel] ?? "1024x1024";
 }
 
+// Which other channels the same aspect image tends to work on, so we can
+// tell the generator "optimized for X, also suitable for Y, Z".
+const CHANNEL_COMPATIBILITY: Record<string, string[]> = {
+  instagram: ["Facebook", "Threads"],
+  facebook: ["Instagram", "Threads"],
+  threads: ["Instagram", "Facebook"],
+  linkedin: ["X"],
+  x: ["Threads", "LinkedIn"],
+  tiktok: ["Instagram Reels", "YouTube Shorts"],
+  youtube: ["LinkedIn", "X"],
+  pinterest: ["Instagram Reels"],
+};
+
+function channelDisplayName(c: string): string {
+  if (c === "x") return "X";
+  if (c === "tiktok") return "TikTok";
+  if (c === "youtube") return "YouTube";
+  if (c === "linkedin") return "LinkedIn";
+  return c.charAt(0).toUpperCase() + c.slice(1);
+}
+
+function channelSuitabilityLine(channel: string): string {
+  const also = CHANNEL_COMPATIBILITY[channel] ?? [];
+  const primary = channelDisplayName(channel);
+  if (also.length === 0) {
+    return `Optimized for ${primary}.`;
+  }
+  return `Optimized for ${primary}, also suitable for ${also.join(", ")}.`;
+}
+
 // ── Image settings (dev-visible) ──
 
 export const imageSettingsSchema = z.object({
   model: z
     .enum(["gpt-image-1.5", "gpt-image-1", "dall-e-3"])
     .default("gpt-image-1.5"),
-  quality: z.enum(["low", "medium", "high", "auto"]).default("auto"),
+  quality: z.enum(["low", "medium", "high", "auto"]).default("high"),
   size: z
     .enum(["1024x1024", "1536x1024", "1024x1536", "auto"])
     .default("1024x1024"),
@@ -158,7 +188,10 @@ function fallbackPrompt(args: {
     `A single editorial social image for "${args.brandName}"`,
     args.pillarName ? `in the pillar "${args.pillarName}"` : "",
     args.angleTitle ? `illustrating "${args.angleTitle}"` : "",
-    `for ${args.channel}.`,
+    `for ${channelDisplayName(args.channel)}.`,
+    "",
+    `## Channel fit`,
+    channelSuitabilityLine(args.channel),
     "",
     "## Caption it must illustrate",
     args.captionBody.slice(0, 900),
@@ -169,7 +202,7 @@ function fallbackPrompt(args: {
     "## Visual direction",
     `- Anchor the palette around ${args.primaryColor} (primary brand color).`,
     "- Photographic or tasteful editorial illustration — never AI-looking slop.",
-    "- No on-image text, watermarks, or fake brand names.",
+    "- No baked-in fake brand names, watermarks, or logos from other brands.",
     "- Leave a focal dead-zone in the composition where a headline or logo can be layered on top.",
     "- Lighting should feel intentional (directional, natural, dramatic) — never flat stock-photo lighting.",
   ]
@@ -224,14 +257,24 @@ export async function prepareImageGeneration(
         "the channel's aspect, and the post's pillar/angle. Then decide which",
         "creative assets to hand the generator as visual references.",
         "",
-        "Output through the plan_image tool. Do not include on-image text or",
-        "watermarks in the prompt — those get layered on afterwards.",
+        "The prompt must include a short 'Channel fit' note — e.g. 'Optimized",
+        "for Instagram, also suitable for Facebook and Threads.' Use the",
+        "channel suitability line provided in the user message verbatim.",
+        "",
+        "If the caption implies overlay text or requires photorealistic quality",
+        "(product shots, people, editorial scenes), say so explicitly in the",
+        "prompt — the generator uses that signal to allocate quality.",
+        "",
+        "Output through the plan_image tool. Do not bake fake brand names,",
+        "watermarks, or competing logos into the prompt. Leave a focal",
+        "dead-zone where a headline or the real brand logo can be layered on.",
       ].join("\n");
 
       const user = [
         `# Brand: ${piece.brand.name}`,
         `Primary color: ${primaryColor}`,
         `Channel: ${piece.channel} (aspect: ${baseSettings.size})`,
+        `Channel suitability line (use verbatim in the prompt): ${channelSuitabilityLine(piece.channel)}`,
         piece.pillar ? `Pillar: ${piece.pillar.name} (${piece.pillar.color})` : "",
         piece.angle ? `Angle: ${piece.angle.title}` : "",
         "",
@@ -296,18 +339,25 @@ export async function prepareImageGeneration(
     suggestionReason: reasonMap.get(a.id) ?? null,
   }));
 
+  const suitabilityLine = channelSuitabilityLine(piece.channel);
+  let finalPrompt =
+    claudePlan?.prompt ??
+    fallbackPrompt({
+      brandName: piece.brand.name,
+      voiceGuide: piece.brand.voiceGuide,
+      primaryColor,
+      pillarName: piece.pillar?.name ?? null,
+      angleTitle: piece.angle?.title ?? null,
+      captionBody: piece.body,
+      channel: piece.channel,
+    });
+  const primaryDisplay = channelDisplayName(piece.channel);
+  if (!finalPrompt.toLowerCase().includes(primaryDisplay.toLowerCase())) {
+    finalPrompt = `${finalPrompt.trim()}\n\n## Channel fit\n${suitabilityLine}`;
+  }
+
   return {
-    prompt:
-      claudePlan?.prompt ??
-      fallbackPrompt({
-        brandName: piece.brand.name,
-        voiceGuide: piece.brand.voiceGuide,
-        primaryColor,
-        pillarName: piece.pillar?.name ?? null,
-        angleTitle: piece.angle?.title ?? null,
-        captionBody: piece.body,
-        channel: piece.channel,
-      }),
+    prompt: finalPrompt,
     channel: piece.channel,
     settings: baseSettings,
     logoUrl: piece.brand.logoUrl,

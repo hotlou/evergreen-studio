@@ -21,7 +21,7 @@ export type GeneratedImage = {
 
 const DEFAULT_SETTINGS: ImageSettings = {
   model: "gpt-image-1.5",
-  quality: "auto",
+  quality: "high",
   size: "1024x1024",
   background: "auto",
   output_format: "png",

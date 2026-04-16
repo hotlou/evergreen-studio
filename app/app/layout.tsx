@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { getBrandContext } from "@/lib/brand";
+import { signOutAction } from "@/app/actions/account";
 
 export default async function AppLayout({
   children,
@@ -26,7 +27,12 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen bg-slate-bg">
-      <Sidebar currentBrand={currentLite} brands={brandsLite} />
+      <Sidebar
+        currentBrand={currentLite}
+        brands={brandsLite}
+        user={{ name: ctx.user.name, email: ctx.user.email }}
+        signOutAction={signOutAction}
+      />
       <main className="flex-1 min-w-0">{children}</main>
     </div>
   );

@@ -11,6 +11,8 @@ import {
   Calendar,
   Palette,
   Archive,
+  Settings,
+  LogOut,
 } from "lucide-react";
 import { BrandSwitcher } from "./BrandSwitcher";
 import { cn } from "@/lib/utils";
@@ -24,15 +26,24 @@ type NavItem = {
 };
 
 type BrandLite = { id: string; name: string; slug: string };
+type UserLite = { name: string | null; email: string | null };
 
 export function Sidebar({
   currentBrand,
   brands,
+  user,
+  signOutAction,
 }: {
   currentBrand: BrandLite | null;
   brands: BrandLite[];
+  user: UserLite;
+  signOutAction: () => Promise<void>;
 }) {
   const pathname = usePathname();
+  const settingsActive =
+    pathname === "/app/settings" || pathname.startsWith("/app/settings/");
+  const displayName = user.name?.trim() || user.email?.split("@")[0] || "You";
+  const displayEmail = user.email ?? "";
 
   const nav: NavItem[] = [
     { href: "/app/today", label: "Today", icon: LayoutDashboard },
@@ -102,6 +113,48 @@ export function Sidebar({
           );
         })}
       </nav>
+
+      <div className="mt-auto pt-4 border-t border-slate-line -mx-3.5 px-3.5">
+        <div className="flex items-center gap-2 px-2 py-1.5">
+          <div className="w-7 h-7 rounded-full bg-evergreen-100 text-evergreen-700 flex items-center justify-center text-[11px] font-bold shrink-0">
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[12px] font-semibold text-slate-ink truncate">
+              {displayName}
+            </div>
+            {displayEmail && (
+              <div className="text-[10px] text-slate-muted truncate">
+                {displayEmail}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 mt-1">
+          <Link
+            href="/app/settings"
+            className={cn(
+              "flex-1 flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition",
+              settingsActive
+                ? "bg-evergreen-50 text-evergreen-700 font-semibold"
+                : "text-slate-muted hover:bg-slate-bg hover:text-slate-ink"
+            )}
+          >
+            <Settings className="w-4 h-4 shrink-0" />
+            <span>Settings</span>
+          </Link>
+          <form action={signOutAction}>
+            <button
+              type="submit"
+              title="Sign out"
+              aria-label="Sign out"
+              className="flex items-center justify-center rounded-lg w-9 h-9 text-slate-muted hover:bg-slate-bg hover:text-red-600 transition"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </form>
+        </div>
+      </div>
     </aside>
   );
 }

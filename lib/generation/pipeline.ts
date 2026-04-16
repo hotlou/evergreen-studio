@@ -172,24 +172,33 @@ async function callClaudeAndParse(
   const raw = toolBlock.input as Record<string, unknown>;
 
   // Defensive: Claude sometimes returns `pieces` as a stringified JSON array
-  // instead of a real array. Unwrap it if so.
+  // instead of a real array. Unwrap it if so — with a repair step for the
+  // most common failure mode (raw \n/\t/\r characters embedded inside string
+  // values, which JSON.parse rejects).
   if (typeof raw.pieces === "string") {
-    try {
-      raw.pieces = JSON.parse(raw.pieces);
-    } catch {
+    const rawString = raw.pieces;
+    const parsed = tryParseJsonLenient(rawString);
+    if (parsed === null) {
+      console.error(
+        "Generation: could not parse pieces string. Length=" +
+          rawString.length +
+          ", first 2500 chars:",
+        rawString.slice(0, 2500)
+      );
       throw new MalformedToolInputError(
         "Claude returned pieces as a malformed JSON string."
       );
     }
+    raw.pieces = parsed;
   }
   // Also handle the case where the whole input is a string (rare)
   let parsedRaw: Record<string, unknown> = raw;
   if (typeof raw === "string") {
-    try {
-      parsedRaw = JSON.parse(raw as unknown as string);
-    } catch {
+    const parsed = tryParseJsonLenient(raw as unknown as string);
+    if (parsed === null) {
       throw new MalformedToolInputError("Claude returned malformed tool input.");
     }
+    parsedRaw = parsed as Record<string, unknown>;
   }
 
   try {
@@ -256,4 +265,65 @@ async function persistPieces(
   });
 
   return results;
+}
+
+/**
+ * Parse JSON with a repair pass for Claude's most common malformation:
+ * raw control characters (\n, \r, \t) embedded inside string values
+ * without escaping. JSON.parse rejects these; we walk the string with
+ * a tiny state machine and escape them where they appear inside quotes.
+ *
+ * Returns null if the string can't be salvaged.
+ */
+function tryParseJsonLenient(input: string): unknown | null {
+  try {
+    return JSON.parse(input);
+  } catch {
+    // fall through to repair attempt
+  }
+
+  let repaired = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (escaped) {
+      repaired += c;
+      escaped = false;
+      continue;
+    }
+    if (c === "\\") {
+      repaired += c;
+      escaped = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      repaired += c;
+      continue;
+    }
+    if (inString) {
+      if (c === "\n") {
+        repaired += "\\n";
+        continue;
+      }
+      if (c === "\r") {
+        repaired += "\\r";
+        continue;
+      }
+      if (c === "\t") {
+        repaired += "\\t";
+        continue;
+      }
+      // Other C0 control chars: strip
+      if (c.charCodeAt(0) < 0x20) continue;
+    }
+    repaired += c;
+  }
+
+  try {
+    return JSON.parse(repaired);
+  } catch {
+    return null;
+  }
 }

@@ -72,10 +72,11 @@ export async function archivePiece(pieceId: string) {
 
 export async function rewritePieceAction(
   pieceId: string,
-  instruction: RewriteInstruction
+  instruction: RewriteInstruction,
+  customPrompt?: string
 ) {
   await requirePieceAccess(pieceId);
-  const result = await rewritePiece(pieceId, instruction);
+  const result = await rewritePiece(pieceId, instruction, customPrompt);
   revalidatePath("/app/today");
   revalidatePath("/app/library");
   return result;

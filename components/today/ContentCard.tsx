@@ -75,6 +75,8 @@ export function ContentCard({
   const [editBody, setEditBody] = useState(piece.body);
   const [pending, startTransition] = useTransition();
   const [showRewriteMenu, setShowRewriteMenu] = useState(false);
+  const [customRewriteOpen, setCustomRewriteOpen] = useState(false);
+  const [customRewriteText, setCustomRewriteText] = useState("");
 
   // Local display state for optimistic UX
   const [displayBody, setDisplayBody] = useState(piece.body);
@@ -142,20 +144,33 @@ export function ContentCard({
     });
   }
 
-  async function handleRewrite(instruction: RewriteInstruction) {
+  async function handleRewrite(
+    instruction: RewriteInstruction,
+    customPrompt?: string
+  ) {
     setShowRewriteMenu(false);
     setPhase("rewriting");
     try {
-      const result = await rewritePieceAction(piece.id, instruction);
+      const result = await rewritePieceAction(piece.id, instruction, customPrompt);
       // Optimistically show new body
       setDisplayBody(result.body);
       setEditBody(result.body);
-      setRewriteNote(instruction.replace("_", " "));
+      setRewriteNote(
+        instruction === "custom" ? "custom direction" : instruction.replace("_", " ")
+      );
       setPhase("just-rewritten");
     } catch (err) {
       console.error(err);
       setPhase("idle");
     }
+  }
+
+  async function handleCustomRewriteSubmit() {
+    const trimmed = customRewriteText.trim();
+    if (!trimmed) return;
+    setCustomRewriteOpen(false);
+    setCustomRewriteText("");
+    await handleRewrite("custom", trimmed);
   }
 
   // Just-approved confirmation card (replaces the regular card briefly)
@@ -486,7 +501,7 @@ export function ContentCard({
                   className="fixed inset-0 z-10"
                   onClick={() => setShowRewriteMenu(false)}
                 />
-                <div className="absolute bottom-full left-0 mb-1 bg-white border border-slate-line rounded-lg shadow-lg z-20 min-w-[160px] overflow-hidden">
+                <div className="absolute bottom-full left-0 mb-1 bg-white border border-slate-line rounded-lg shadow-lg z-20 min-w-[180px] overflow-hidden">
                   {REWRITE_OPTIONS.map((opt) => (
                     <button
                       key={opt.instruction}
@@ -497,6 +512,17 @@ export function ContentCard({
                       {opt.label}
                     </button>
                   ))}
+                  <div className="border-t border-slate-line" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRewriteMenu(false);
+                      setCustomRewriteOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold text-evergreen-700 hover:bg-evergreen-50 transition"
+                  >
+                    Custom direction…
+                  </button>
                 </div>
               </>
             )}
@@ -564,6 +590,64 @@ export function ContentCard({
             router.refresh();
           }}
         />
+      )}
+
+      {customRewriteOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-ink/40 px-4"
+          onClick={() => setCustomRewriteOpen(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-lg border border-slate-line w-full max-w-md p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Wand2 className="w-4 h-4 text-evergreen-600" />
+              <h3 className="font-display text-lg text-slate-ink">
+                Custom rewrite direction
+              </h3>
+            </div>
+            <p className="text-xs text-slate-muted mb-3">
+              Tell Claude how to rewrite this caption. E.g. &quot;make it more
+              playful,&quot; &quot;lead with the customer benefit,&quot; &quot;add a
+              CTA at the end.&quot;
+            </p>
+            <textarea
+              autoFocus
+              value={customRewriteText}
+              onChange={(e) => setCustomRewriteText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleCustomRewriteSubmit();
+                }
+              }}
+              placeholder="How should this be rewritten?"
+              rows={4}
+              className="w-full rounded-lg border border-slate-line px-3 py-2 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100 resize-none"
+            />
+            <div className="flex items-center justify-end gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomRewriteOpen(false);
+                  setCustomRewriteText("");
+                }}
+                className="rounded-lg border border-slate-line px-3 py-1.5 text-xs font-semibold text-slate-muted hover:bg-slate-bg transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCustomRewriteSubmit}
+                disabled={!customRewriteText.trim()}
+                className="rounded-lg bg-evergreen-500 hover:bg-evergreen-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-xs px-3 py-1.5 transition"
+              >
+                Rewrite
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

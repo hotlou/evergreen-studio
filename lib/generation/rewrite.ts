@@ -7,9 +7,10 @@ export type RewriteInstruction =
   | "expand"
   | "one_line"
   | "double_it"
-  | "punchier";
+  | "punchier"
+  | "custom";
 
-const INSTRUCTION_GUIDANCE: Record<RewriteInstruction, string> = {
+const INSTRUCTION_GUIDANCE: Record<Exclude<RewriteInstruction, "custom">, string> = {
   shorten: "Cut this caption to roughly 50% of its current length while keeping the core hook and message. Remove fluff, redundancy, and any weak lines.",
   expand: "Expand this caption by roughly 50% — add texture, specifics, or a second beat. Don't pad; add real content.",
   one_line: "Rewrite this as a single punchy line (under 120 characters, no hashtags, no line breaks). Just the hook and payoff.",
@@ -17,13 +18,23 @@ const INSTRUCTION_GUIDANCE: Record<RewriteInstruction, string> = {
   punchier: "Rewrite this to be punchier, tighter, and more opinionated. Shorter sentences. Stronger verbs. Cut hedging.",
 };
 
+function guidanceFor(instruction: RewriteInstruction, customPrompt?: string): string {
+  if (instruction === "custom") {
+    const trimmed = (customPrompt ?? "").trim();
+    if (!trimmed) throw new Error("Custom rewrite requires a direction.");
+    return `Follow this user-provided direction for the rewrite:\n\n${trimmed}\n\nStay true to the brand voice and rules above. Return only the rewritten caption.`;
+  }
+  return INSTRUCTION_GUIDANCE[instruction];
+}
+
 /**
  * Rewrite an existing piece with a length/style instruction.
  * Creates a NEW ContentPiece row so the user can compare — doesn't mutate the original.
  */
 export async function rewritePiece(
   pieceId: string,
-  instruction: RewriteInstruction
+  instruction: RewriteInstruction,
+  customPrompt?: string
 ): Promise<{ id: string; body: string; reasonWhy: string | null }> {
   const piece = await prisma.contentPiece.findUniqueOrThrow({
     where: { id: pieceId },
@@ -53,7 +64,7 @@ export async function rewritePiece(
     piece.angle ? `Angle: ${piece.angle.title}` : "",
     "",
     "## Your task",
-    INSTRUCTION_GUIDANCE[instruction],
+    guidanceFor(instruction, customPrompt),
     "",
     "Return ONLY the rewritten caption body — no preamble, no commentary, no markdown fences.",
   ].join("\n");
@@ -90,7 +101,10 @@ export async function rewritePiece(
         angleId: piece.angleId,
         channel: piece.channel,
         body: newBody,
-        reasonWhy: `Rewritten (${instruction.replace("_", " ")}) from piece created ${piece.generatedAt.toLocaleDateString()}.`,
+        reasonWhy:
+          instruction === "custom" && customPrompt
+            ? `Rewritten with custom direction: "${customPrompt.slice(0, 140)}${customPrompt.length > 140 ? "…" : ""}" (from piece created ${piece.generatedAt.toLocaleDateString()}).`
+            : `Rewritten (${instruction.replace("_", " ")}) from piece created ${piece.generatedAt.toLocaleDateString()}.`,
         status: "draft",
       },
     });

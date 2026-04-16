@@ -36,7 +36,10 @@ const CHANNELS = [
   { id: "pinterest", label: "Pinterest", available: false },
 ];
 
+type WizardMode = "splash" | "wizard";
+
 export function IntakeWizard() {
+  const [mode, setMode] = useState<WizardMode>("splash");
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#4EB35E");
@@ -53,6 +56,74 @@ export function IntakeWizard() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const logoInput = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Splash-step state (website-URL-first onboarding)
+  const [splashUrl, setSplashUrl] = useState("");
+  const [inferring, setInferring] = useState(false);
+  const [inferError, setInferError] = useState<string | null>(null);
+  const [inferNote, setInferNote] = useState<string | null>(null);
+
+  async function handleInferFromUrl() {
+    const trimmed = splashUrl.trim();
+    if (!trimmed) return;
+    setInferring(true);
+    setInferError(null);
+    setInferNote(null);
+    try {
+      const res = await fetch("/api/brand/infer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setInferError(data?.error ?? "Couldn't infer from that URL.");
+        return;
+      }
+
+      const result = data.result as {
+        name: string;
+        voiceGuide: string;
+        tabooWords: string[];
+        suggestedChannels: string[];
+        primaryColor: string;
+      };
+      const normalizedUrl = data.url as string | undefined;
+
+      setName(result.name);
+      setVoiceGuide(result.voiceGuide);
+      setTaboos(
+        result.tabooWords
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => t.length > 0 && t.length <= 40)
+      );
+      setPrimaryColor(result.primaryColor.toUpperCase());
+      setHexInput(result.primaryColor.toUpperCase());
+      setWebsiteUrl(normalizedUrl ?? trimmed);
+      const available = new Set(
+        CHANNELS.filter((c) => c.available).map((c) => c.id)
+      );
+      const suggested = result.suggestedChannels.filter((c) => available.has(c));
+      setChannels(suggested.length > 0 ? suggested : ["instagram"]);
+      setInferNote(
+        "We pre-filled the basics from your site. Review each step, tweak anything, then create."
+      );
+      setMode("wizard");
+      setStep(0);
+    } catch (err) {
+      console.error(err);
+      setInferError("Something went wrong. Please try again or start from scratch.");
+    } finally {
+      setInferring(false);
+    }
+  }
+
+  function handleSkipToManual() {
+    setInferNote(null);
+    setInferError(null);
+    setMode("wizard");
+    setStep(0);
+  }
 
   const canNext = () => {
     if (step === 0) return name.trim().length > 0;
@@ -108,6 +179,78 @@ export function IntakeWizard() {
     await createBrand(formData);
   }
 
+  if (mode === "splash") {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="rounded-xl border border-slate-line bg-white shadow-soft p-8">
+          <div className="inline-flex items-center gap-1.5 bg-evergreen-50 text-evergreen-700 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider mb-4">
+            <Sparkles className="w-3 h-3" /> New brand
+          </div>
+          <h2 className="font-display text-2xl text-slate-ink mb-1">
+            What&apos;s your website?
+          </h2>
+          <p className="text-sm text-slate-muted mb-6">
+            Drop in your URL and we&apos;ll pre-fill the basics — name, voice,
+            taboos, brand color, and likely channels. You&apos;ll review each
+            step before creating the brand.
+          </p>
+
+          {inferError && (
+            <div className="mb-4 rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
+              {inferError}
+            </div>
+          )}
+
+          <div className="flex gap-2 mb-4">
+            <div className="relative flex-1">
+              <Globe className="w-4 h-4 text-slate-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="url"
+                value={splashUrl}
+                onChange={(e) => setSplashUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && splashUrl.trim() && !inferring) {
+                    e.preventDefault();
+                    handleInferFromUrl();
+                  }
+                }}
+                placeholder="yourbrand.com"
+                disabled={inferring}
+                autoFocus
+                className="w-full rounded-lg border border-slate-line pl-9 pr-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100 disabled:opacity-60"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleInferFromUrl}
+              disabled={inferring || splashUrl.trim().length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-evergreen-500 hover:bg-evergreen-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-4 py-2.5 transition"
+            >
+              {inferring ? (
+                <>Analyzing…</>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" /> Pre-fill
+                </>
+              )}
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-muted">
+            No site yet, or want full control?{" "}
+            <button
+              type="button"
+              onClick={handleSkipToManual}
+              className="text-evergreen-700 hover:text-evergreen-800 font-semibold underline-offset-2 hover:underline"
+            >
+              Set up manually instead
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form
       action={handleSubmit}
@@ -116,6 +259,21 @@ export function IntakeWizard() {
         if (step !== STEPS.length - 1) e.preventDefault();
       }}
     >
+      {inferNote && (
+        <div className="mb-4 rounded-lg bg-evergreen-50 border border-evergreen-100 px-4 py-3 text-sm text-evergreen-800 flex items-start gap-2">
+          <Sparkles className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>{inferNote}</span>
+          <button
+            type="button"
+            onClick={() => setInferNote(null)}
+            className="ml-auto text-evergreen-700 hover:text-evergreen-800"
+            aria-label="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Stepper */}
       <div className="flex items-center gap-2 mb-8">
         {STEPS.map((s, i) => (

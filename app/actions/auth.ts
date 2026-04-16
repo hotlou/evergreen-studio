@@ -106,27 +106,29 @@ export async function requestPasswordResetAction(
   if (!email.success)
     return { ok: false, error: "Please enter a valid email." };
 
-  const user = await prisma.user.findUnique({ where: { email: email.data } });
-
+  // Never surface whether the email exists, or whether Prisma/Resend failed.
+  // Always return the generic success message; log internally for debugging.
   const genericMessage =
-    "If an account exists for that email, we've sent a password reset link.";
-
-  if (!user) return { ok: true, message: genericMessage };
-
-  const { raw, hash } = makeToken();
-  await prisma.passwordResetToken.create({
-    data: {
-      userId: user.id,
-      tokenHash: hash,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
-    },
-  });
+    "If you have an account with us, your password reset link will arrive in a few moments. Don't forget to check your spam folder.";
 
   try {
-    await sendPasswordResetEmail(user.email, raw, user.name);
+    const user = await prisma.user.findUnique({
+      where: { email: email.data },
+    });
+
+    if (user) {
+      const { raw, hash } = makeToken();
+      await prisma.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hash,
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        },
+      });
+      await sendPasswordResetEmail(user.email, raw, user.name);
+    }
   } catch (err) {
-    console.error("sendPasswordResetEmail failed", err);
-    return { ok: false, error: "Could not send reset email. Try again in a minute." };
+    console.error("requestPasswordResetAction failed (swallowed)", err);
   }
 
   return { ok: true, message: genericMessage };

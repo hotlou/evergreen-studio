@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { requestPasswordResetAction } from "@/app/actions/auth";
+import { ObfuscatedSupportEmail } from "@/components/auth/ObfuscatedSupportEmail";
 
 export function ForgotPasswordForm() {
   const [state, formAction, pending] = useActionState(
@@ -12,8 +13,13 @@ export function ForgotPasswordForm() {
   return (
     <form action={formAction} className="space-y-4">
       {state.ok && state.message && (
-        <div className="rounded-lg bg-evergreen-50 border border-evergreen-100 px-4 py-3 text-sm text-evergreen-800">
-          {state.message}
+        <div className="rounded-lg bg-evergreen-50 border border-evergreen-100 px-4 py-3 text-sm text-evergreen-800 space-y-2">
+          <p>{state.message}</p>
+          <p>
+            Reach out to{" "}
+            <ObfuscatedSupportEmail className="font-semibold text-evergreen-700 hover:text-evergreen-800 underline underline-offset-2" />
+            {" "}if you need more help.
+          </p>
         </div>
       )}
       {state.error && (

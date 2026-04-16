@@ -25,6 +25,7 @@ import {
 import type { RewriteInstruction } from "@/lib/generation/rewrite";
 import { cn } from "@/lib/utils";
 import { GenerateImageDialog } from "./GenerateImageDialog";
+import { EditImageDialog, type EditResult } from "./EditImageDialog";
 
 export type ContentCardMedia = {
   id: string;
@@ -87,6 +88,10 @@ export function ContentCard({
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [selectingImage, setSelectingImage] = useState(false);
+  const [editingImage, setEditingImage] = useState<{
+    id: string;
+    url: string;
+  } | null>(null);
 
   const isApproved = piece.status === "approved";
   const channelInfo = CHANNEL_LABELS[piece.channel] ?? {
@@ -331,16 +336,30 @@ export function ContentCard({
                         <Check className="w-3 h-3" />
                       </div>
                     )}
-                    <a
-                      href={m.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute bottom-1 right-1 bg-white/85 hover:bg-white text-slate-muted hover:text-slate-ink text-[9px] font-mono uppercase tracking-wider font-bold px-1.5 py-0.5 rounded shadow-sm opacity-0 hover:opacity-100 focus:opacity-100"
+                    <div
+                      className="absolute bottom-1 right-1 flex items-center gap-1 opacity-0 hover:opacity-100 focus-within:opacity-100 transition-opacity"
                       style={{ opacity: isSelected ? 1 : undefined }}
                     >
-                      Open
-                    </a>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingImage({ id: m.id, url: m.url });
+                        }}
+                        className="bg-white/85 hover:bg-white text-slate-muted hover:text-evergreen-600 text-[9px] font-mono uppercase tracking-wider font-bold px-1.5 py-0.5 rounded shadow-sm"
+                      >
+                        Edit
+                      </button>
+                      <a
+                        href={m.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="bg-white/85 hover:bg-white text-slate-muted hover:text-slate-ink text-[9px] font-mono uppercase tracking-wider font-bold px-1.5 py-0.5 rounded shadow-sm"
+                      >
+                        Open
+                      </a>
+                    </div>
                   </button>
                 );
               })}
@@ -526,6 +545,22 @@ export function ContentCard({
               ...m,
               { id: result.mediaAssetId, url: result.url, kind: "image" },
             ]);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {editingImage && (
+        <EditImageDialog
+          pieceId={piece.id}
+          sourceImage={editingImage}
+          onClose={() => setEditingImage(null)}
+          onEdited={(result: EditResult) => {
+            setMedia((m) => [
+              ...m,
+              { id: result.mediaAssetId, url: result.url, kind: "image" },
+            ]);
+            setEditingImage(null);
             router.refresh();
           }}
         />

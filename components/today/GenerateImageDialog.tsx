@@ -310,11 +310,18 @@ export function GenerateImageDialog({
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-semibold text-slate-ink">
+                      <div className="text-[12px] font-semibold text-slate-ink flex items-center gap-2">
                         Brand logo
+                        {includeLogo && (
+                          <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">
+                            High fidelity locked
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-muted">
-                        Hand the logo to the generator as a visual anchor.
+                        {includeLogo
+                          ? "Input fidelity locked to HIGH — the generator will reproduce the logo pixel-perfect."
+                          : "Hand the logo to the generator as a visual anchor."}
                       </div>
                     </div>
                   </label>

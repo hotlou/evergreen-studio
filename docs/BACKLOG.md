@@ -23,64 +23,151 @@ See `docs/TEMPLATES.md` — full spec. Separate tracked project, not v1 scope.
 
 ---
 
-## Logo fidelity when included as a reference image
+## ~~Logo fidelity when included as a reference image~~
 
-**Reported:** 2026-04-15
+**Resolved:** 2026-04-16
 
-When `includeLogo` is true and the brand logo is sent to the generator as a
-reference, the model frequently warps the wordmark — letters drift, the icon
-gets re-interpreted, colors shift. A logo that's almost-right is worse than
-no logo (the brand looks counterfeit).
-
-**Fix ideas (pick one or stack them):**
-1. **Force high input fidelity when logo is included.** If `includeLogo` is
-   true, lock `settings.input_fidelity = "high"` regardless of what the user
-   picked, and surface a tiny "logo mode" badge in the dialog explaining why.
-2. **Inject a logo-fidelity clause into the prompt** automatically when the
-   logo is attached: "Reproduce the supplied logo pixel-perfect — do not
-   restyle, recolor, or redraw it. Treat it as a fixed asset to be placed,
-   not a reference to riff on."
-3. **Compose, don't generate.** Generate the image without the logo, then
-   run a follow-up image-edit step that overlays the logo onto a designated
-   corner (bottom-right by default, configurable). This is the only fully
-   reliable path — generators will never beat a literal compositor for
-   wordmark fidelity.
-
-Probably want #1+#2 immediately and #3 as the long-term answer (ties into
-the "edit a generated image" item below).
-
-**Touch points:** `components/today/GenerateImageDialog.tsx`
-(settings lock + badge), `app/api/content/[id]/generate-image/route.ts`
-(prompt clause injection, fidelity override), eventually a new
-compositor step in `lib/generation/image.ts` (or wherever the OpenAI
-image call lives).
+Implemented: forced `input_fidelity: "high"` when logo included, strengthened
+prompt clause to demand pixel-perfect reproduction, added "High fidelity locked"
+badge in dialog. Compositor (#3) remains a stretch goal — see "In-app image
+editor" below.
 
 ---
 
-## Edit a generated image with a follow-up prompt (or full image editor)
+## ~~Edit a generated image with a follow-up prompt~~
 
-**Reported:** 2026-04-15
+**Resolved:** 2026-04-16
 
-Right now the generator is one-shot: prompt in, image out. If the user
-wants a small change ("move the logo to the top-left", "make the
-background lighter", "remove the second cup") their only option is to
-re-generate from scratch and hope.
+Implemented the minimum: "Edit" button on every generated image thumbnail opens
+`EditImageDialog` with quick-edit pills + freeform prompt. Calls new
+`/api/content/[id]/edit-image` route → `lib/images/edit.ts` which uses
+`images.edit` with `input_fidelity: "high"`. Edited image stacks as a new
+`MediaAsset` alongside the original. Mask-region editing and the full in-app
+editor remain as stretch goals below.
+
+---
+
+## In-app image editor (stretch)
+
+**Reported:** 2026-04-16 · Low priority
+
+Full in-app editor pane — crop, brightness, text overlay, logo overlay
+drag-to-position, mask-region edits. This is the natural home for the
+"compose the logo on top" approach (reliable wordmark fidelity) and
+mask-scoped edits (OpenAI's images.edit accepts a mask image).
+
+Hold off until the prompt-based edit flow proves insufficient.
+
+**Touch points:** new editor component, extend `/api/content/[id]/edit-image`
+with mask support.
+
+---
+
+## User/password creation (authentication)
+
+**Reported:** 2026-04-16
+
+Currently auth is session-based (likely OAuth only). Need a traditional
+email + password sign-up / sign-in flow so users who don't have an OAuth
+provider can self-register.
 
 **Fix ideas:**
-- **Minimum:** add an "Edit with prompt" button on a generated image that
-  opens a follow-up dialog. The previous image becomes the input reference
-  (with `input_fidelity: "high"`), the user types what to change, we hit
-  the image-edit endpoint, and the result replaces or sibling-attaches to
-  the original.
-- **Nice-to-have:** mark a region (rect or freehand mask) that the edit is
-  scoped to, so untouched areas are guaranteed pixel-stable. OpenAI's
-  image-edit endpoint accepts a mask image — wire it through.
-- **Stretch:** an actual in-app image editor pane — crop, brightness,
-  text overlay, logo overlay drag-to-position. This is the natural home
-  for the "compose the logo on top" approach from the logo-fidelity item.
+- Add credentials provider to the existing `lib/auth` NextAuth config.
+- Sign-up page (`/auth/register`) with email, password, confirm password.
+- Password hashing with bcrypt/argon2.
+- Email verification flow (send link, mark verified).
+- Password reset flow (forgot password → email link → reset form).
+- Rate-limit login attempts.
 
-**Touch points:** new `EditImageDialog` component, new
-`/api/content/[id]/edit-image` route, `lib/generation/image.ts` for the
-edit-call wrapper. Decide whether edited images replace the original
-`mediaAsset` row or stack as versions.
+**Touch points:** `lib/auth.ts` (NextAuth config), new
+`app/auth/register/page.tsx`, `app/auth/forgot-password/page.tsx`,
+`prisma/schema.prisma` (add `passwordHash`, `emailVerified` fields if
+not already present).
 
+---
+
+## Simplified onboarding: "What's your website?"
+
+**Reported:** 2026-04-16
+
+Current brand creation asks for name, website, voice guide, taboos,
+channels, colors, logo — a lot of upfront friction. Most of this can be
+inferred from a single URL.
+
+**Vision:** the happy path is just one field: "What's your website?"
+(with an expandable "Add more detail if you'd like" section for power
+users). From the URL we:
+
+1. Scrape the site for brand signals (name, colors, logo, voice
+   fragments, product/service descriptions, social links).
+2. Run the scraped content through the existing `parseBrandSignals`
+   pipeline to extract structured brand data.
+3. Auto-fill the full brand settings (name, palette, logo, voice guide,
+   channels, taboos) and present them for one-click approval.
+4. Kick off background research (competitor scan, content strategy
+   suggestions) that trickles into the brand page.
+
+The user reviews and approves (or tweaks) rather than building from
+scratch. "Add more detail" expands the current full form for anyone who
+wants manual control.
+
+**Touch points:** `app/app/brands/new/page.tsx` (redesign intake),
+`lib/brand-signals.ts` (already exists — extend with URL-based scraping),
+new `lib/brand/infer-from-url.ts` (scraper + signal extraction), possibly
+a new `/api/brand/infer` route for async scraping.
+
+---
+
+## SVG template creator (AI social post generator)
+
+**Reported:** 2026-04-16
+
+Dedicated tool for generating branded social media images from SVG
+templates — logo/image in, colors extracted, template recolored, AI-
+generated caption overlaid, final PNG out.
+
+### Core flow
+
+1. Upload image (or use brand logo)
+2. Extract 5–8 dominant hex colors (always include black, white, light
+   gray, dark gray)
+3. User selects colors from the extracted palette
+4. Pick a random SVG template from `/templatesources/`, replace dominant
+   `fill` colors with user's selected colors, convert SVG → PNG
+5. User inputs a URL
+6. Scrape visible page text, send to LLM, generate 1 short caption
+   (curiosity-driven, < 20 words, no emojis)
+7. Detect largest "empty" area in the generated PNG, auto-fit wrapped
+   text (white text, black shadow, shrink font if needed)
+8. Return final PNG
+
+### Modes
+
+- **New Image** → random new template
+- **Swap Colors** → reuse current template with different palette
+
+### Constraints
+
+- SVG recoloring only affects `fill` (no gradients / CSS)
+- Optimized for simple SVG templates
+- Max upload: 10 MB · output: ~1024–2048 px square
+- End-to-end generation < 10 seconds
+- No separate persistence or accounts — uses existing brand context
+
+### Data / state
+
+Store in session or local state: `brand_colors`, `selected_colors`,
+`source_svg`, `generated_image`, `generated_text`.
+
+### File structure
+
+```
+/templatesources/          # SVG templates
+/media/generated_images/   # output PNGs
+/fonts/                    # font files
+```
+
+**Touch points:** new `app/app/templates/page.tsx`, new
+`lib/templates/` (color extraction, SVG recoloring, text overlay,
+caption generation), new `/api/templates/generate` route. Consider
+integrating with the brand's existing creative assets and color tokens.

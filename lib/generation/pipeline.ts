@@ -21,6 +21,18 @@ export type GeneratedContentPiece = {
 };
 
 /**
+ * Thrown when Claude's tool-use input is shaped wrong (e.g. `pieces` returned
+ * as a stringified JSON that won't parse). The pipeline retries once on this
+ * before bubbling — the API layer maps it to a friendly user-facing message.
+ */
+export class MalformedToolInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MalformedToolInputError";
+  }
+}
+
+/**
  * Full generation pipeline:
  * 1. Select pillar+angle slots (anti-rep scheduling)
  * 2. Fetch context (voice, taboos, recent pieces, learnings)
@@ -63,7 +75,9 @@ export async function generateContentPack(
     take: 12,
   });
 
-  // 3. Build prompt and call Claude
+  // 3. Build prompt and call Claude (with one retry on malformed tool input —
+  // Claude occasionally returns `pieces` as a stringified JSON array on cold
+  // brands; a single retry almost always resolves it without surfacing.)
   const { system, user } = buildGenerationPrompt({
     brandName: brand.name,
     voiceGuide: brand.voiceGuide ?? "",
@@ -76,6 +90,29 @@ export async function generateContentPack(
     })),
   });
 
+  let pieces: GeneratedPiece[];
+  try {
+    pieces = await callClaudeAndParse(system, user);
+  } catch (err) {
+    if (err instanceof MalformedToolInputError) {
+      console.warn(
+        "Generation: malformed tool input on first attempt, retrying once.",
+        err.message
+      );
+      pieces = await callClaudeAndParse(system, user);
+    } else {
+      throw err;
+    }
+  }
+
+  // 4. Persist pieces + update angle usage
+  return await persistPieces(brandId, channel, slots, pieces);
+}
+
+async function callClaudeAndParse(
+  system: string,
+  user: string
+): Promise<GeneratedPiece[]> {
   const anthropic = new Anthropic();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- cache_control not in SDK types
@@ -108,8 +145,8 @@ export async function generateContentPack(
     try {
       raw.pieces = JSON.parse(raw.pieces);
     } catch {
-      throw new Error(
-        "Claude returned pieces as a malformed string. Please retry."
+      throw new MalformedToolInputError(
+        "Claude returned pieces as a malformed JSON string."
       );
     }
   }
@@ -119,13 +156,30 @@ export async function generateContentPack(
     try {
       parsedRaw = JSON.parse(raw as unknown as string);
     } catch {
-      throw new Error("Claude returned malformed tool input. Please retry.");
+      throw new MalformedToolInputError("Claude returned malformed tool input.");
     }
   }
 
-  const { pieces } = generateContentSchema.parse(parsedRaw);
+  try {
+    const { pieces } = generateContentSchema.parse(parsedRaw);
+    return pieces;
+  } catch (err) {
+    // Schema validation failure on tool input is the same class of issue —
+    // surface as MalformedToolInputError so the retry path catches it.
+    throw new MalformedToolInputError(
+      err instanceof Error
+        ? `Tool input failed schema validation: ${err.message}`
+        : "Tool input failed schema validation."
+    );
+  }
+}
 
-  // 4. Persist pieces + update angle usage
+async function persistPieces(
+  brandId: string,
+  channel: string,
+  slots: SelectedSlot[],
+  pieces: GeneratedPiece[]
+): Promise<GeneratedContentPiece[]> {
   const results: GeneratedContentPiece[] = [];
 
   await prisma.$transaction(async (tx) => {

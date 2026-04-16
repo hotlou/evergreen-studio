@@ -65,12 +65,19 @@ function augmentPromptWithReferences(args: {
     const num = i + 1;
     if (ref.kind === "logo") {
       lines.push(
-        `### Reference image #${num} — BRAND LOGO`,
+        `### Reference image #${num} — BRAND LOGO (PIXEL-PERFECT REQUIRED)`,
+        "- CRITICAL: Reproduce this logo EXACTLY as supplied. Every letter, curve, " +
+          "color, and proportion must be pixel-perfect. This is a legal trademark — " +
+          "any deviation (wrong letter shapes, swapped colors, redrawn icon, missing " +
+          "elements) is unacceptable.",
         "- Place it visibly in the final composition as a small corner lockup " +
           "(top-right or bottom-right, ~8-12% of the frame).",
-        "- Do not recolor, redraw, or distort the logo. Keep its original colors, " +
-          "proportions, and negative space intact.",
-        "- Treat it as a finished asset being composited — not inspiration.",
+        "- Do NOT recolor, redraw, restyle, simplify, or artistically reinterpret " +
+          "the logo under any circumstances. Keep its original colors, proportions, " +
+          "spacing, and negative space exactly intact.",
+        "- Treat it as a finished asset being composited onto the image — NOT as " +
+          "inspiration or a style reference. It must appear in the output exactly as " +
+          "it appears in the input.",
         ""
       );
     } else {
@@ -128,6 +135,13 @@ export async function generateImageForPiece(
     ...DEFAULT_SETTINGS,
     ...(options.settings ?? {}),
   };
+
+  // Logo fidelity: when the brand logo is included as a reference, force high
+  // input fidelity — lower fidelity causes the model to warp wordmarks, swap
+  // colors, and reinterpret the icon. Non-negotiable.
+  if (options.includeLogo && piece.brand.logoUrl) {
+    settings.input_fidelity = "high";
+  }
 
   // Resolve reference images — brand logo (optional) + selected creative assets
   const refIds = options.referenceAssetIds ?? [];

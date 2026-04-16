@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getBrandContext } from "@/lib/brand";
 import { prisma } from "@/lib/db";
 import { EmptyBrandState } from "@/components/shell/EmptyBrandState";
+import { BrandNameEditor } from "@/components/brand/BrandNameEditor";
 import { LogoUploader } from "@/components/brand/LogoUploader";
 import { ColorTokensEditor } from "@/components/brand/ColorTokensEditor";
 import { ImageStylePills } from "@/components/brand/ImageStylePills";
@@ -68,9 +69,7 @@ export default async function BrandPage() {
         <div className="font-mono text-[10px] uppercase tracking-widest text-slate-muted mb-1.5">
           BRAND · ASSETS · VOICE · PUBLISHING
         </div>
-        <h1 className="font-display text-[32px] font-semibold tracking-tight text-evergreen-700 leading-tight">
-          {brand.name}
-        </h1>
+        <BrandNameEditor brandId={brand.id} initial={brand.name} />
         <p className="text-sm text-slate-muted mt-1.5">
           Everything generation looks up — logo, palette, voice, taboos,
           channels. Teach the AI once; every piece inherits it.

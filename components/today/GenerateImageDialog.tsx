@@ -196,7 +196,13 @@ export function GenerateImageDialog({
           </div>
         </div>
 
-        <div className="px-5 py-4 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div
+          className={cn(
+            "px-5 py-4 space-y-5 max-h-[75vh] overflow-y-auto transition-opacity",
+            generating && "opacity-50 pointer-events-none select-none"
+          )}
+          aria-hidden={generating}
+        >
           {loadError && (
             <div className="rounded-lg border border-red-100 bg-red-50 text-red-700 text-xs px-3 py-2">
               {loadError}
@@ -304,11 +310,18 @@ export function GenerateImageDialog({
                       />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-semibold text-slate-ink">
+                      <div className="text-[12px] font-semibold text-slate-ink flex items-center gap-2">
                         Brand logo
+                        {includeLogo && (
+                          <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">
+                            High fidelity locked
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-slate-muted">
-                        Hand the logo to the generator as a visual anchor.
+                        {includeLogo
+                          ? "Input fidelity locked to HIGH — the generator will reproduce the logo pixel-perfect."
+                          : "Hand the logo to the generator as a visual anchor."}
                       </div>
                     </div>
                   </label>

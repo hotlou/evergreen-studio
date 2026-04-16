@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { signIn } from "@/lib/auth";
 import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
@@ -8,29 +9,28 @@ export const metadata = { title: "Sign in · Evergreen Studio" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; error?: string }>;
+  searchParams: Promise<{ from?: string; error?: string; notice?: string }>;
 }) {
   const params = await searchParams;
   const from = params?.from ?? "/app/today";
   const error = params?.error;
+  const notice = params?.notice;
 
   async function signInAction(formData: FormData) {
     "use server";
     const email = String(formData.get("email") ?? "");
+    const password = String(formData.get("password") ?? "");
     try {
-      await signIn("credentials", { email, redirectTo: from });
+      await signIn("credentials", { email, password, redirectTo: from });
     } catch (err) {
-      // signIn throws NEXT_REDIRECT on success — rethrow it
       if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
-      // Also check for the redirect digest that Next.js uses
       if (err && typeof err === "object" && "digest" in err) {
         const digest = (err as { digest?: string }).digest;
         if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) throw err;
       }
-      // Real auth error — redirect with message
       const msg =
         err instanceof AuthError
-          ? err.type
+          ? "Invalid email or password."
           : err instanceof Error
           ? err.message
           : "Unknown error";
@@ -64,12 +64,17 @@ export default async function LoginPage({
             Sign in
           </h1>
           <p className="text-sm text-slate-muted mb-6">
-            Dev mode — any email works. We&apos;ll create your workspace on first sign-in.
+            Welcome back. Sign in to your workspace.
           </p>
 
+          {notice && (
+            <div className="mb-4 rounded-lg bg-evergreen-50 border border-evergreen-100 px-4 py-3 text-sm text-evergreen-800">
+              {notice}
+            </div>
+          )}
           {error && (
             <div className="mb-4 rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
-              Sign-in failed: {error}
+              {error}
             </div>
           )}
 
@@ -82,7 +87,28 @@ export default async function LoginPage({
                 type="email"
                 name="email"
                 required
+                autoComplete="email"
                 placeholder="you@example.com"
+                className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
+              />
+            </label>
+            <label className="block">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-mono uppercase tracking-wider text-slate-muted">
+                  Password
+                </span>
+                <Link
+                  href="/forgot-password"
+                  className="text-xs text-evergreen-700 hover:text-evergreen-800 font-semibold"
+                >
+                  Forgot?
+                </Link>
+              </div>
+              <input
+                type="password"
+                name="password"
+                required
+                autoComplete="current-password"
                 className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
               />
             </label>
@@ -90,13 +116,23 @@ export default async function LoginPage({
               type="submit"
               className="w-full rounded-lg bg-evergreen-500 hover:bg-evergreen-600 text-white font-semibold text-sm py-2.5 transition"
             >
-              Continue
+              Sign in
             </button>
           </form>
+
+          <p className="text-center text-sm text-slate-muted mt-6">
+            Don&apos;t have an account?{" "}
+            <Link
+              href="/register"
+              className="text-evergreen-700 hover:text-evergreen-800 font-semibold"
+            >
+              Create one
+            </Link>
+          </p>
         </div>
 
         <p className="text-center text-xs text-slate-muted mt-6 font-mono uppercase tracking-wider">
-          EverGreen Studio · v0.1
+          Evergreen Studio · v0.1
         </p>
       </div>
     </main>

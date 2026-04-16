@@ -268,12 +268,20 @@ async function persistPieces(
 }
 
 /**
- * Parse JSON with a repair pass for Claude's most common malformation:
- * raw control characters (\n, \r, \t) embedded inside string values
- * without escaping. JSON.parse rejects these; we walk the string with
- * a tiny state machine and escape them where they appear inside quotes.
+ * Parse JSON with a repair pass for Claude's two most common malformations:
+ *   (a) raw control characters (\n, \r, \t) embedded inside string values
+ *       without being escaped; and
+ *   (b) embedded unescaped double quotes inside string values — e.g. a
+ *       caption body that contains a quoted phrase like `says "hi"`.
  *
- * Returns null if the string can't be salvaged.
+ * We walk the string with a tiny state machine. For each `"` we encounter
+ * while inside a string, we look ahead to the next non-whitespace character:
+ * if it's a structural JSON char (`:`, `,`, `}`, `]`, or EOF) the quote is
+ * treated as a legitimate string close; otherwise it's rewritten as `\"`.
+ * This is heuristic but handles the overwhelming majority of Claude's
+ * tool-input malformations.
+ *
+ * Returns null if the string still can't be parsed after repair.
  */
 function tryParseJsonLenient(input: string): unknown | null {
   try {
@@ -298,8 +306,37 @@ function tryParseJsonLenient(input: string): unknown | null {
       continue;
     }
     if (c === '"') {
-      inString = !inString;
-      repaired += c;
+      if (!inString) {
+        inString = true;
+        repaired += c;
+        continue;
+      }
+      // Inside a string. Look ahead past whitespace to decide if this `"`
+      // closes the string or is an embedded unescaped quote.
+      let j = i + 1;
+      while (
+        j < input.length &&
+        (input[j] === " " ||
+          input[j] === "\t" ||
+          input[j] === "\n" ||
+          input[j] === "\r")
+      ) {
+        j++;
+      }
+      const nextCh = j < input.length ? input[j] : null;
+      if (
+        nextCh === null ||
+        nextCh === ":" ||
+        nextCh === "," ||
+        nextCh === "}" ||
+        nextCh === "]"
+      ) {
+        inString = false;
+        repaired += c;
+      } else {
+        // Embedded unescaped quote — escape it and stay inside the string.
+        repaired += '\\"';
+      }
       continue;
     }
     if (inString) {

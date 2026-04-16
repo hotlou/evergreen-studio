@@ -56,7 +56,7 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="w-[216px] shrink-0 bg-white border-r border-slate-line flex flex-col px-3.5 py-5 gap-1">
+    <aside className="w-[216px] shrink-0 bg-white border-r border-slate-line flex flex-col px-3.5 py-5 gap-1 sticky top-0 self-start h-screen overflow-y-auto">
       <Link
         href="/app/today"
         className="flex items-center gap-2.5 mb-5 px-1.5"

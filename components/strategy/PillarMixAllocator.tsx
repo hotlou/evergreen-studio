@@ -320,12 +320,14 @@ export function PillarMixAllocator({
               className="w-3 h-3 rounded-sm"
               style={{ background: p.color }}
             />
-            <div
-              className="text-[13px] font-medium text-slate-ink truncate"
-              title={p.name}
+            <button
+              type="button"
+              onClick={() => onEditPillar?.(p.id)}
+              title={`Click to edit ${p.name}`}
+              className="text-[13px] font-medium text-slate-ink truncate text-left rounded px-1 -mx-1 hover:bg-amber-50 hover:text-evergreen-700 hover:underline underline-offset-4 decoration-evergreen-400/60 transition"
             >
               {p.name}
-            </div>
+            </button>
             <input
               type="range"
               min={0}

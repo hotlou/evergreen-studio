@@ -62,3 +62,13 @@ body {
 .anim-rewrite-pulse {
   animation: rewrite-pulse 1.5s ease-out 2;
 }
+
+/* Classic yellow-fade highlight — used when a row or banner briefly
+   surfaces to draw attention (newly saved, just-linked CTA, etc.). */
+@keyframes yellow-fade {
+  0%   { background-color: rgba(253, 224, 71, 0.55); }
+  100% { background-color: rgba(253, 224, 71, 0);    }
+}
+.anim-yellow-fade {
+  animation: yellow-fade 2.6s ease-out forwards;
+}

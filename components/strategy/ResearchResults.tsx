@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, X, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { Check, X, Sparkles, ArrowRight } from "lucide-react";
 import type { ResearchResult } from "@/lib/research/prompts";
 import {
   acceptResearch,
@@ -60,7 +61,9 @@ export function ResearchResults({
     startTransition(async () => {
       await acceptResearch(brandId, result, input);
       setSaved(true);
-      setTimeout(() => onAccepted(), 1500);
+      // Don't auto-dismiss on first onboarding — let the user click the
+      // CTA to go generate content. onAccepted() refreshes the page and
+      // unmounts this component, which is what we want on subsequent runs.
     });
   }
 
@@ -73,19 +76,40 @@ export function ResearchResults({
 
   if (saved) {
     return (
-      <div className="rounded-xl border border-evergreen-200 bg-evergreen-50 p-5 text-center">
-        <Check className="w-6 h-6 text-evergreen-600 mx-auto mb-2" />
-        <div className="font-semibold text-evergreen-700 text-sm">
-          Strategy updated
+      <div className="rounded-xl border border-evergreen-200 bg-evergreen-50 p-6 text-center anim-yellow-fade">
+        <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-evergreen-500 text-white mx-auto mb-3">
+          <Check className="w-5 h-5" />
         </div>
-        <p className="text-xs text-evergreen-600 mt-1">
-          Pillars, angles, voice, and taboos have been saved.
+        <div className="font-display text-lg text-slate-ink mb-1">
+          Strategy approved
+        </div>
+        <p className="text-sm text-slate-muted mb-5">
+          Pillars, angles, voice, and taboos are saved. Ready for daily
+          content.
         </p>
+        <Link
+          href="/app/today"
+          className="inline-flex items-center gap-2 rounded-lg bg-evergreen-500 hover:bg-evergreen-600 text-white font-semibold text-sm px-5 py-2.5 transition"
+        >
+          Generate your first content pack
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={onAccepted}
+            className="text-xs text-slate-muted hover:text-slate-ink"
+          >
+            Stay on strategy
+          </button>
+        </div>
       </div>
     );
   }
 
-  const buttonLabel = hasExistingPillars ? "Merge suggestions" : "Accept all";
+  const buttonLabel = hasExistingPillars
+    ? "Approve selected"
+    : "Approve pillars";
   const nothingSelected =
     selectedPillars.size === 0 && !acceptVoice && !acceptTaboos;
 
@@ -118,6 +142,21 @@ export function ResearchResults({
           <X className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Review nudge */}
+      {!hasExistingPillars && (
+        <div className="px-5 py-3 border-b border-slate-line bg-amber-50 anim-yellow-fade">
+          <p className="text-[13px] text-slate-ink">
+            <span className="font-semibold">
+              If these pillars look good, approve them below.
+            </span>{" "}
+            <span className="text-slate-muted">
+              Unchecking a pillar drops it; click a pillar to edit it after
+              approving.
+            </span>
+          </p>
+        </div>
+      )}
 
       {/* Summary */}
       <div className="px-5 py-4 border-b border-slate-line">

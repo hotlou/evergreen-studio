@@ -157,7 +157,9 @@ export async function createBrand(formData: FormData) {
   }
 
   revalidatePath("/app", "layout");
-  redirect("/app/today");
+  // First stop after intake is Strategy — the user needs to generate +
+  // approve their pillars before daily content generation makes sense.
+  redirect("/app/strategy?onboarding=1");
 }
 
 // ── Brand page editors ────────────────────────────────────────

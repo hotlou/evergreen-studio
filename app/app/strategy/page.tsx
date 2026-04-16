@@ -10,7 +10,13 @@ import { RedirectButton } from "@/components/strategy/RedirectButton";
 
 export const metadata = { title: "Strategy · Evergreen Studio" };
 
-export default async function StrategyPage() {
+export default async function StrategyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ onboarding?: string }>;
+}) {
+  const params = await searchParams;
+  const isOnboarding = params?.onboarding === "1";
   const ctx = await getBrandContext();
   if (!ctx?.currentBrand) {
     return (
@@ -58,6 +64,8 @@ export default async function StrategyPage() {
     }
   }
 
+  const showOnboardingBanner = isOnboarding && pillars.length === 0;
+
   return (
     <div className="px-8 py-7 max-w-4xl">
       <div className="flex items-start justify-between mb-6">
@@ -73,6 +81,22 @@ export default async function StrategyPage() {
           </p>
         </div>
       </div>
+
+      {showOnboardingBanner && (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 anim-yellow-fade">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-amber-700 font-bold mb-1">
+            Welcome — one more step
+          </div>
+          <h2 className="font-display text-lg text-slate-ink mb-1">
+            Generate your pillars before creating your daily content
+          </h2>
+          <p className="text-sm text-slate-muted">
+            Click &ldquo;Research brand with AI&rdquo; below and we&apos;ll
+            propose 3–6 content pillars based on your website. You&apos;ll
+            review and approve before anything goes live.
+          </p>
+        </div>
+      )}
 
       {/* AI Research */}
       <ResearchButton

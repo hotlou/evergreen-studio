@@ -4,7 +4,13 @@ import { ForgotPasswordForm } from "./ForgotPasswordForm";
 
 export const metadata = { title: "Reset password · Evergreen Studio" };
 
-export default function ForgotPasswordPage() {
+export default async function ForgotPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string }>;
+}) {
+  const { email: initialEmail } = await searchParams;
+
   return (
     <main className="min-h-screen bg-slate-bg flex items-center justify-center px-6">
       <div className="w-full max-w-md">
@@ -33,7 +39,7 @@ export default function ForgotPasswordPage() {
           <p className="text-sm text-slate-muted mb-6">
             Enter your email and we&apos;ll send you a reset link.
           </p>
-          <ForgotPasswordForm />
+          <ForgotPasswordForm initialEmail={initialEmail ?? ""} />
           <p className="text-center text-sm text-slate-muted mt-6">
             <Link
               href="/login"

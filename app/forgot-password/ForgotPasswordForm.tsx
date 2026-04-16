@@ -4,7 +4,11 @@ import { useActionState } from "react";
 import { requestPasswordResetAction } from "@/app/actions/auth";
 import { ObfuscatedSupportEmail } from "@/components/auth/ObfuscatedSupportEmail";
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({
+  initialEmail = "",
+}: {
+  initialEmail?: string;
+}) {
   const [state, formAction, pending] = useActionState(
     requestPasswordResetAction,
     { ok: false } as { ok: boolean; error?: string; message?: string }
@@ -37,6 +41,8 @@ export function ForgotPasswordForm() {
           required
           autoComplete="email"
           placeholder="you@example.com"
+          defaultValue={initialEmail}
+          autoFocus={!initialEmail}
           className="w-full rounded-lg border border-slate-line px-3 py-2.5 text-sm outline-none focus:border-evergreen-500 focus:ring-2 focus:ring-evergreen-100"
         />
       </label>

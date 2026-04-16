@@ -33,6 +33,18 @@ export class MalformedToolInputError extends Error {
 }
 
 /**
+ * Thrown when Claude truncates output by hitting the max_tokens ceiling.
+ * Retrying with the same budget won't help — the UI should suggest
+ * generating fewer captions or tightening the brand's content.
+ */
+export class GenerationTruncatedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GenerationTruncatedError";
+  }
+}
+
+/**
  * Full generation pipeline:
  * 1. Select pillar+angle slots (anti-rep scheduling)
  * 2. Fetch context (voice, taboos, recent pieces, learnings)
@@ -94,6 +106,8 @@ export async function generateContentPack(
   try {
     pieces = await callClaudeAndParse(system, user);
   } catch (err) {
+    // Truncation can't be solved by retrying with the same budget — bubble it.
+    if (err instanceof GenerationTruncatedError) throw err;
     if (err instanceof MalformedToolInputError) {
       console.warn(
         "Generation: malformed tool input on first attempt, retrying once.",
@@ -124,12 +138,30 @@ async function callClaudeAndParse(
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    max_tokens: 8192,
     system: [systemBlock],
     tools: [GENERATE_CONTENT_TOOL],
     tool_choice: { type: "tool", name: "generate_content_pack" },
     messages: [{ role: "user", content: user }],
   });
+
+  // Log usage and stop reason so incidents are diagnosable from Vercel logs.
+  console.log(
+    "Generation: claude response",
+    JSON.stringify({
+      stop_reason: response.stop_reason,
+      usage: response.usage,
+    })
+  );
+
+  // If Claude hit the max_tokens ceiling, tool input is almost certainly
+  // truncated. Retrying with the same budget won't help — surface a distinct
+  // error so the UI can say something useful.
+  if (response.stop_reason === "max_tokens") {
+    throw new GenerationTruncatedError(
+      "Claude ran out of output space for this brand's content. Try generating fewer captions, or shorten the voice guide and pillar descriptions."
+    );
+  }
 
   // Extract tool-use result
   const toolBlock = response.content.find((b) => b.type === "tool_use");

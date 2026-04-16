@@ -35,9 +35,12 @@ export const GENERATE_CONTENT_TOOL: Tool = {
             body: {
               type: "string",
               description:
-                "The full Instagram caption. 100-2200 chars. Include relevant " +
-                "hashtags at the end (3-8 tags). Use line breaks for readability. " +
-                "Start with a hook that stops the scroll.",
+                "The full Instagram caption. Target 300-1200 chars; hard " +
+                "cap 2200. Include relevant hashtags at the end (3-8 tags). " +
+                "Use line breaks for readability. Start with a hook that " +
+                "stops the scroll. Shorter and sharper usually outperforms " +
+                "long — prefer tighter copy unless the angle genuinely needs " +
+                "the length.",
             },
             reasonWhy: {
               type: "string",

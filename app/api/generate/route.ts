@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import {
   generateContentPack,
   MalformedToolInputError,
+  GenerationTruncatedError,
 } from "@/lib/generation/pipeline";
 
 export async function POST(req: Request) {
@@ -52,6 +53,12 @@ export async function POST(req: Request) {
     // Keep the dev-facing detail in the log above; surface a friendly
     // message for the known cold-cache hiccup so the UI doesn't show
     // raw "Claude returned pieces as a malformed string" wording.
+    if (err instanceof GenerationTruncatedError) {
+      return NextResponse.json(
+        { error: err.message },
+        { status: 503 }
+      );
+    }
     if (err instanceof MalformedToolInputError) {
       return NextResponse.json(
         {

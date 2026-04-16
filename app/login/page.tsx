@@ -49,8 +49,13 @@ export default async function LoginPage({
             height={44}
             priority
           />
-          <div className="font-display text-2xl text-slate-ink tracking-tight">
-            Evergreen
+          <div className="flex flex-col leading-none">
+            <div className="font-display text-2xl text-slate-ink tracking-tight">
+              Evergreen
+            </div>
+            <div className="font-sans text-[14px] font-light tracking-[0.2em] text-slate-ink/75 mt-0.5">
+              STUDIO
+            </div>
           </div>
         </div>
 

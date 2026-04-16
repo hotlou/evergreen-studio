@@ -57,8 +57,13 @@ export function Sidebar({
           height={28}
           priority
         />
-        <div className="font-display text-[18px] font-semibold text-evergreen-700 tracking-tight">
-          Evergreen
+        <div className="flex flex-col leading-none">
+          <div className="font-display text-[18px] font-semibold text-evergreen-700 tracking-tight">
+            Evergreen
+          </div>
+          <div className="font-sans text-[11px] font-light tracking-[0.2em] text-evergreen-700/80 mt-0.5">
+            STUDIO
+          </div>
         </div>
       </Link>
 

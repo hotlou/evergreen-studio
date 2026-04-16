@@ -13,6 +13,7 @@ import {
   Archive,
   Settings,
   LogOut,
+  Shield,
 } from "lucide-react";
 import { BrandSwitcher } from "./BrandSwitcher";
 import { cn } from "@/lib/utils";
@@ -33,15 +34,19 @@ export function Sidebar({
   brands,
   user,
   signOutAction,
+  showAdminLink = false,
 }: {
   currentBrand: BrandLite | null;
   brands: BrandLite[];
   user: UserLite;
   signOutAction: () => Promise<void>;
+  showAdminLink?: boolean;
 }) {
   const pathname = usePathname();
   const settingsActive =
     pathname === "/app/settings" || pathname.startsWith("/app/settings/");
+  const adminActive =
+    pathname === "/app/admin" || pathname.startsWith("/app/admin/");
   const displayName = user.name?.trim() || user.email?.split("@")[0] || "You";
   const displayEmail = user.email ?? "";
 
@@ -130,6 +135,23 @@ export function Sidebar({
             )}
           </div>
         </div>
+        {showAdminLink && (
+          <Link
+            href="/app/admin"
+            className={cn(
+              "flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] transition mb-0.5",
+              adminActive
+                ? "bg-evergreen-50 text-evergreen-700 font-semibold"
+                : "text-slate-muted hover:bg-slate-bg hover:text-slate-ink"
+            )}
+          >
+            <Shield className="w-4 h-4 shrink-0" />
+            <span>Admin</span>
+            <span className="ml-auto text-[9px] font-mono uppercase tracking-wider text-evergreen-700 font-bold">
+              God
+            </span>
+          </Link>
+        )}
         <div className="flex items-center gap-1 mt-1">
           <Link
             href="/app/settings"

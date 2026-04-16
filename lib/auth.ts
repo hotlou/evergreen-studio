@@ -1,16 +1,28 @@
 import NextAuth from "next-auth";
+import type { Session } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { Role } from "@prisma/client";
+import { isAdminEmail } from "@/lib/admin";
+import { getImpersonation } from "@/lib/impersonation";
 
 /**
  * Email + password auth via Credentials. Accounts are created from the
  * /register page and via the password-reset flow. On first successful sign-in
  * we ensure a workspace + owner membership exists.
+ *
+ * The public `auth()` below is a thin wrapper around next-auth's `auth()`
+ * that transparently swaps `session.user` with the impersonation target
+ * when a valid impersonation cookie is present AND the real caller is an
+ * admin. All downstream code that reads `session.user.id` gets the
+ * acted-as user for free.
+ *
+ * `middlewareAuth` is the raw multi-signature next-auth helper; only
+ * middleware.ts should import it (to wrap the request handler).
  */
-export const { handlers, auth, signIn, signOut } = NextAuth({
+const nextAuthInstance = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
   trustHost: true,
@@ -69,3 +81,57 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
 });
+
+export const { handlers, signIn, signOut } = nextAuthInstance;
+
+/** Raw next-auth auth (supports the middleware-wrapping form). */
+export const middlewareAuth = nextAuthInstance.auth;
+
+/** Raw no-arg session lookup, bypassing impersonation. */
+export async function authReal(): Promise<Session | null> {
+  return nextAuthInstance.auth();
+}
+
+/**
+ * Wrapped session lookup: applies impersonation at the session boundary
+ * so every caller that reads session.user.id transparently sees the
+ * acted-as user when an admin has opted in. Attaches an `impersonating`
+ * field describing the real caller so the UI can show the banner.
+ */
+export async function auth(): Promise<Session | null> {
+  const session = await nextAuthInstance.auth();
+  if (!session?.user?.id) return session;
+
+  const imp = await getImpersonation();
+  if (!imp) return session;
+
+  // Only honor impersonation if the underlying session is the admin
+  // that minted the cookie, AND that user is still on the admin list.
+  if (imp.admin !== session.user.id) return session;
+  const realUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true, name: true },
+  });
+  if (!realUser || !isAdminEmail(realUser.email)) return session;
+
+  const target = await prisma.user.findUnique({
+    where: { id: imp.target },
+    select: { id: true, email: true, name: true },
+  });
+  if (!target) return session;
+
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      id: target.id,
+      email: target.email,
+      name: target.name,
+    },
+    impersonating: {
+      realUserId: imp.admin,
+      realEmail: realUser.email,
+      realName: realUser.name,
+    },
+  };
+}

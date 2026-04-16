@@ -1,7 +1,7 @@
-import { auth } from "@/lib/auth";
+import { middlewareAuth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-export default auth((req) => {
+export default middlewareAuth((req) => {
   const { pathname } = req.nextUrl;
   const isAuthed = !!req.auth;
 

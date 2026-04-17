@@ -7,7 +7,23 @@ import {
   getImageStyles,
 } from "@/lib/brand/image-styles";
 
-// ── Channel aspect preferences ──
+// ── Default photographic style ──
+//
+// Without this, gpt-image-* tends toward overproduced, color-graded,
+// "stock photo" output that reads as inauthentic on social. We push it
+// hard toward unfiltered iPhone-snapshot energy unless the brand has
+// explicitly locked a different style.
+const DEFAULT_PHOTO_DIRECTIVE = [
+  "## Default photography style (apply unless overridden by ## Visual style)",
+  "All photography should look like a candid, low-production-value iPhone",
+  "snapshot — natural light, no filters, no color grading, no LUTs, no",
+  "vignette, no soft-focus, no professional retouching. Slight imperfection",
+  "is good (off-axis framing, mixed white balance, real-world clutter,",
+  "available-light shadows). Aim for the look of a real person posting from",
+  "their phone, NOT a polished brand campaign. AVOID: HDR, dramatic rim",
+  "lighting, hyperreal saturation, shallow-DOF studio bokeh, glossy",
+  "post-processing.",
+].join("\n");
 
 export type ImageSize = "1024x1024" | "1536x1024" | "1024x1536" | "auto";
 
@@ -210,7 +226,9 @@ function fallbackPrompt(args: {
     `- Anchor the palette around ${args.primaryColor} (primary brand color).`,
     "- No baked-in fake brand names, watermarks, or logos from other brands.",
     "- Leave a focal dead-zone in the composition where a headline or logo can be layered on top.",
-    "- Lighting should feel intentional (directional, natural, dramatic) — never flat stock-photo lighting.",
+    args.styleFragment
+      ? "- Honor the locked visual style above — that overrides defaults."
+      : DEFAULT_PHOTO_DIRECTIVE,
   ]
     .filter(Boolean)
     .join("\n");
@@ -276,8 +294,13 @@ export async function prepareImageGeneration(
             "include it in your output prompt. Do not default to illustration " +
             "if the style says photography, and vice versa."
           : "No visual style is locked for this brand. Default to photography " +
-            "or editorial photo unless the caption strongly implies otherwise " +
-            "— never default to generic AI illustration.",
+            "(NEVER illustration). The default photo style is candid, " +
+            "low-production-value iPhone snapshot — unfiltered, no color " +
+            "grading, no LUTs, natural available light, mixed white balance, " +
+            "real-world imperfection. Include the '## Default photography " +
+            "style' block (provided in the user message) verbatim in your " +
+            "output prompt. AVOID polished editorial / studio / HDR / glossy " +
+            "looks unless the caption explicitly demands them.",
         "",
         "If the caption implies overlay text or requires photorealistic quality",
         "(product shots, people, editorial scenes), say so explicitly in the",
@@ -297,7 +320,8 @@ export async function prepareImageGeneration(
         piece.angle ? `Angle: ${piece.angle.title}` : "",
         "",
         styleFragment ? styleFragment : "",
-        styleFragment ? "" : "",
+        styleFragment ? "" : DEFAULT_PHOTO_DIRECTIVE,
+        "",
         "## Voice guide",
         piece.brand.voiceGuide?.slice(0, 1500) || "(none)",
         "",
@@ -380,6 +404,16 @@ export async function prepareImageGeneration(
   // style fragment, append it so the generator never falls back to illustration.
   if (styleFragment && !finalPrompt.includes("## Visual style")) {
     finalPrompt = `${finalPrompt.trim()}\n\n${styleFragment}`;
+  }
+  // And: if NO style is locked and Claude didn't include the iPhone-snapshot
+  // default, append it. Without this, generation drifts toward overproduced
+  // stock-photo aesthetics that read as inauthentic on social.
+  if (
+    !styleFragment &&
+    !finalPrompt.toLowerCase().includes("iphone snapshot") &&
+    !finalPrompt.includes("## Default photography style")
+  ) {
+    finalPrompt = `${finalPrompt.trim()}\n\n${DEFAULT_PHOTO_DIRECTIVE}`;
   }
 
   return {

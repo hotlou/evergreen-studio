@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   X,
   Settings2,
@@ -12,6 +13,8 @@ import {
   ImagePlus,
   Info,
   FastForward,
+  AlertTriangle,
+  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RotatingStatusToast } from "./RotatingStatusToast";
@@ -218,6 +221,32 @@ export function GenerateImageDialog({
 
           {prep && settings && (
             <>
+              {/* Warning when there are no creative assets to ground the
+                  generation. Generated images will still come out, but
+                  they'll feel generic — push the user to add some first. */}
+              {prep.creativeAssets.length === 0 && !prep.logoUrl && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900 leading-relaxed flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
+                  <div className="flex-1">
+                    <div className="font-semibold mb-0.5">
+                      No brand reference images yet
+                    </div>
+                    <p className="text-amber-800">
+                      Generated images will look generic without something to
+                      anchor them. Add headshots, product photos, watermarks
+                      or graphics first — they make every generation feel
+                      on-brand.
+                    </p>
+                    <Link
+                      href="/app/brand#creative-assets"
+                      className="inline-flex items-center gap-1 mt-1.5 text-amber-900 font-semibold hover:underline"
+                    >
+                      Add creative assets <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                </div>
+              )}
+
               {/* Plan notes */}
               {prep.planNotes && (
                 <div className="rounded-lg bg-evergreen-50/60 border border-evergreen-100 px-3 py-2 text-[12px] text-evergreen-800 leading-relaxed flex gap-2">

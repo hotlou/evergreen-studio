@@ -12,6 +12,7 @@ import {
   BrandCreativeAssets,
   type CreativeAsset,
 } from "@/components/brand/BrandCreativeAssets";
+import { DeleteBrandPanel } from "@/components/brand/DeleteBrandPanel";
 import { VoiceGuideEditor } from "@/components/strategy/VoiceGuideEditor";
 import { TabooWordsEditor } from "@/components/strategy/TabooWordsEditor";
 
@@ -105,8 +106,12 @@ export default async function BrandPage() {
         <TabooWordsEditor brandId={brand.id} initial={brand.taboosList} />
       </div>
 
-      <div className="mb-4">
-        <BrandCreativeAssets brandId={brand.id} assets={creativeAssets} />
+      <div className="mb-4" id="creative-assets">
+        <BrandCreativeAssets
+          brandId={brand.id}
+          assets={creativeAssets}
+          websiteUrl={brand.websiteUrl}
+        />
       </div>
 
       <section className="rounded-xl border border-slate-line bg-white p-5 mb-4">
@@ -126,7 +131,7 @@ export default async function BrandPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-line bg-white p-5">
+      <section className="rounded-xl border border-slate-line bg-white p-5 mb-4">
         <div className="flex items-start justify-between">
           <div>
             <div className="font-mono text-[10px] uppercase tracking-wider text-slate-muted font-bold">
@@ -155,6 +160,8 @@ export default async function BrandPage() {
           </Link>
         </div>
       </section>
+
+      <DeleteBrandPanel brandId={brand.id} brandName={brand.name} />
     </div>
   );
 }

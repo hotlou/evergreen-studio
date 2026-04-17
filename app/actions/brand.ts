@@ -235,3 +235,44 @@ export async function removeBrandLogo(brandId: string) {
   revalidatePath("/app/brand");
   revalidatePath("/app", "layout");
 }
+
+/**
+ * Permanently delete a brand and everything underneath it (pillars, angles,
+ * content pieces, media assets, learnings, ingest jobs, publish events).
+ * The Prisma schema cascades, so a single Brand delete tears it all down.
+ *
+ * Safety: requires the caller to type "DELETE BRAND" verbatim. The cookie
+ * for the current brand is cleared if it pointed at the deleted one, and
+ * the user is redirected so they don't end up on a stale page.
+ */
+export async function deleteBrandAction(
+  brandId: string,
+  confirmation: string
+): Promise<void> {
+  if (confirmation !== "DELETE BRAND") {
+    throw new Error('Type "DELETE BRAND" exactly to confirm.');
+  }
+
+  const brand = await requireBrandAccess(brandId);
+
+  await prisma.brand.delete({ where: { id: brand.id } });
+
+  // If the deleted brand was the active one, drop the cookie so the next
+  // page load picks a fresh default.
+  const cookieStore = await cookies();
+  if (cookieStore.get(BRAND_COOKIE_NAME)?.value === brand.id) {
+    cookieStore.delete(BRAND_COOKIE_NAME);
+  }
+
+  revalidatePath("/app", "layout");
+
+  // If any sibling brands remain, land on Today; otherwise send them to
+  // the empty-state intake flow.
+  const remaining = await prisma.brand.count({
+    where: { workspaceId: brand.workspaceId },
+  });
+  if (remaining > 0) {
+    redirect("/app/today");
+  }
+  redirect("/app/brands/new");
+}

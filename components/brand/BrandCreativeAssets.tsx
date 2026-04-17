@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Trash2, Sparkles, FileText } from "lucide-react";
 import { MediaUploader } from "@/components/library/MediaUploader";
+import { SuggestFromWebsite } from "@/components/brand/SuggestFromWebsite";
 import { deleteMediaAsset, retagMediaAsset } from "@/app/actions/media";
 
 export type CreativeAsset = {
@@ -19,9 +20,11 @@ export type CreativeAsset = {
 export function BrandCreativeAssets({
   brandId,
   assets,
+  websiteUrl,
 }: {
   brandId: string;
   assets: CreativeAsset[];
+  websiteUrl: string | null;
 }) {
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
@@ -56,6 +59,8 @@ export function BrandCreativeAssets({
           All uploaded →
         </Link>
       </div>
+
+      <SuggestFromWebsite brandId={brandId} websiteUrl={websiteUrl} />
 
       <div className="mb-4">
         <MediaUploader

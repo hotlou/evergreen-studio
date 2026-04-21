@@ -158,6 +158,10 @@ export function GenerateImageDialog({
   }
 
   const refCount = selectedIds.size + (includeLogo && prep?.logoUrl ? 1 : 0);
+  // gpt-image-1.x models accept input_fidelity; gpt-image-2 and dall-e-3
+  // don't. Used to gate the "High fidelity locked" badge + copy.
+  const modelSupportsInputFidelity =
+    settings?.model === "gpt-image-1.5" || settings?.model === "gpt-image-1";
 
   return (
     <div
@@ -341,15 +345,25 @@ export function GenerateImageDialog({
                     <div className="flex-1 min-w-0">
                       <div className="text-[12px] font-semibold text-slate-ink flex items-center gap-2">
                         Brand logo
-                        {includeLogo && (
+                        {includeLogo && modelSupportsInputFidelity && (
                           <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">
                             High fidelity locked
+                          </span>
+                        )}
+                        {includeLogo && !modelSupportsInputFidelity && (
+                          <span
+                            className="inline-flex items-center gap-1 bg-slate-bg text-slate-muted text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                            title="gpt-image-2 doesn't expose an input_fidelity knob; fidelity is model-decided."
+                          >
+                            Reference only
                           </span>
                         )}
                       </div>
                       <div className="text-[11px] text-slate-muted">
                         {includeLogo
-                          ? "Input fidelity locked to HIGH — the generator will reproduce the logo pixel-perfect."
+                          ? modelSupportsInputFidelity
+                            ? "Input fidelity locked to HIGH — the generator will reproduce the logo pixel-perfect."
+                            : "Handed to the generator as a visual reference. This model doesn't expose a high-fidelity toggle — switch to gpt-image-1.5 for strict logo reproduction."
                           : "Hand the logo to the generator as a visual anchor."}
                       </div>
                     </div>
@@ -507,7 +521,7 @@ function SettingsPanel({
         label="Model"
         value={settings.model}
         onChange={(v) => set("model", v as ImageSettings["model"])}
-        options={["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "dall-e-3"]}
+        options={["gpt-image-1.5", "gpt-image-2", "gpt-image-1", "dall-e-3"]}
       />
       <SelectField
         label="Quality"

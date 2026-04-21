@@ -20,7 +20,10 @@ export type GeneratedImage = {
 };
 
 const DEFAULT_SETTINGS: ImageSettings = {
-  model: "gpt-image-2",
+  // Prefer gpt-image-1.5 for now: it exposes input_fidelity="high" which
+  // gives noticeably better adherence to brand logos + creative-asset
+  // references. gpt-image-2 is available in the dropdown for testing.
+  model: "gpt-image-1.5",
   quality: "high",
   size: "1024x1024",
   background: "auto",
@@ -31,6 +34,17 @@ const DEFAULT_SETTINGS: ImageSettings = {
 
 function isGptImageModel(model: string): boolean {
   return model.startsWith("gpt-image-");
+}
+
+/**
+ * input_fidelity is the gpt-image-1.x-era knob for "reproduce reference
+ * images faithfully." gpt-image-2 removed the parameter (the API 400s if
+ * you send it) — per OpenAI's docs the model accepts high-fidelity inputs
+ * but doesn't let callers toggle how strictly it adheres. Anything outside
+ * the 1.x family — gpt-image-2, dall-e-3 — skips the param.
+ */
+function supportsInputFidelity(model: string): boolean {
+  return model === "gpt-image-1.5" || model === "gpt-image-1";
 }
 
 type PromptRef =
@@ -220,17 +234,20 @@ export async function generateImageForPiece(
       );
       // The OpenAI SDK accepts an array of images via the image param.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const editResult = await (openai.images.edit as any)({
+      const editArgs: any = {
         model: settings.model,
         prompt: finalPrompt,
         image: files,
         n: settings.n,
         size: settings.size === "auto" ? undefined : settings.size,
         quality: settings.quality,
-        input_fidelity: settings.input_fidelity,
         output_format: settings.output_format,
         background: settings.background,
-      });
+      };
+      if (supportsInputFidelity(settings.model)) {
+        editArgs.input_fidelity = settings.input_fidelity;
+      }
+      const editResult = await (openai.images.edit as any)(editArgs);
       const first = editResult.data?.[0];
       if (first?.b64_json) b64 = first.b64_json;
       else if (first?.url) directUrl = first.url;

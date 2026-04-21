@@ -45,7 +45,8 @@ export async function editImageForPiece(
     throw new Error("Asset does not belong to this brand");
   }
 
-  const model = "gpt-image-2";
+  // See lib/images/generate.ts — 1.5 wins on reference fidelity for now.
+  const model = "gpt-image-1.5";
   const quality = options.quality ?? "high";
   const size = options.size === "auto" ? undefined : (options.size ?? "1024x1024");
 
@@ -62,16 +63,20 @@ export async function editImageForPiece(
   const openai = new OpenAI();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = await (openai.images.edit as any)({
+  const editArgs: any = {
     model,
     prompt: editPrompt,
     image: [sourceFile],
     n: 1,
     size,
     quality,
-    input_fidelity: "high",
     output_format: "png",
-  });
+  };
+  // gpt-image-1.x supports this knob; gpt-image-2 doesn't (and 400s).
+  if (model === "gpt-image-1.5" || model === "gpt-image-1") {
+    editArgs.input_fidelity = "high";
+  }
+  const result = await (openai.images.edit as any)(editArgs);
 
   const first = result.data?.[0];
   let buffer: Buffer;

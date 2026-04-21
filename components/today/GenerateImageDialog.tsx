@@ -29,7 +29,7 @@ export type DialogCreativeAsset = {
 };
 
 export type ImageSettings = {
-  model: "gpt-image-1.5" | "gpt-image-1" | "dall-e-3";
+  model: "gpt-image-2" | "gpt-image-1.5" | "gpt-image-1" | "dall-e-3";
   quality: "low" | "medium" | "high" | "auto";
   size: "1024x1024" | "1536x1024" | "1024x1536" | "auto";
   background: "auto" | "transparent" | "opaque";
@@ -507,7 +507,7 @@ function SettingsPanel({
         label="Model"
         value={settings.model}
         onChange={(v) => set("model", v as ImageSettings["model"])}
-        options={["gpt-image-1.5", "gpt-image-1", "dall-e-3"]}
+        options={["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "dall-e-3"]}
       />
       <SelectField
         label="Quality"

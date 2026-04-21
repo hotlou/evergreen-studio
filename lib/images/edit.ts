@@ -45,7 +45,7 @@ export async function editImageForPiece(
     throw new Error("Asset does not belong to this brand");
   }
 
-  const model = "gpt-image-1.5";
+  const model = "gpt-image-2";
   const quality = options.quality ?? "high";
   const size = options.size === "auto" ? undefined : (options.size ?? "1024x1024");
 

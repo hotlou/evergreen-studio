@@ -20,7 +20,7 @@ const MESSAGES = [
   "Art-directing every pixel…",
   "Rendering (patience, please)…",
   "Routing through creative review…",
-  "Conferring with gpt-image-1.5…",
+  "Conferring with gpt-image-2…",
   "Checking the taboos list one more time…",
 ];
 

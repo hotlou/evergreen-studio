@@ -20,7 +20,7 @@ export type GeneratedImage = {
 };
 
 const DEFAULT_SETTINGS: ImageSettings = {
-  model: "gpt-image-1.5",
+  model: "gpt-image-2",
   quality: "high",
   size: "1024x1024",
   background: "auto",

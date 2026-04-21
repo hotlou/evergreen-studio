@@ -76,8 +76,8 @@ function channelSuitabilityLine(channel: string): string {
 
 export const imageSettingsSchema = z.object({
   model: z
-    .enum(["gpt-image-1.5", "gpt-image-1", "dall-e-3"])
-    .default("gpt-image-1.5"),
+    .enum(["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "dall-e-3"])
+    .default("gpt-image-2"),
   quality: z.enum(["low", "medium", "high", "auto"]).default("high"),
   size: z
     .enum(["1024x1024", "1536x1024", "1024x1536", "auto"])
